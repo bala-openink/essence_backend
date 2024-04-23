@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "ocs-backend"
+version = "0.1.0"
+description = "One click summary - backend"
+authors = ["balamurugan-b <balaforfriends@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+Flask = "^3.0.2"
+gunicorn = "^21.2.0"
+openai = "^1.14.3"
+gTTS = "^2.5.1"
+serverless-wsgi = "^3.0.3"
+boto3 = "1.29.*"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

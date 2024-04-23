@@ -1,0 +1,41 @@
+service: ocs-backend
+
+provider:
+  name: aws
+  runtime: provided
+  region: us-east-1
+  memorySize: 2048
+  timeout: 60
+  ecr:
+    images:
+      ocsbackend:
+        path: ./
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:*
+      Resource: "arn:aws:dynamodb:us-east-1:322521590770:*"  # Grants full access to DynamoDB
+    - Effect: Allow
+      Action:
+        - s3:*
+      Resource: "arn:aws:s3:::*"  # Grants full access to all S3 buckets
+    - Effect: Allow
+      Action:
+        - polly:SynthesizeSpeech
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - secretsmanager:GetSecretValue
+      Resource: "arn:aws:secretsmanager:us-west-1:322521590770:*"
+
+functions:
+  app:
+    image:
+      name: ocsbackend
+    events:
+      - httpApi: 
+          path: /{any+} # This is a catch-all path
+          method: '*'
+          cors: true
+    environment:
+      ENVIRONMENT: "production"
