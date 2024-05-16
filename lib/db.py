@@ -13,9 +13,11 @@ _USER_ACTIVITY_TABLE = None
 
 # Using environment variable to determine local or production deployment
 environment = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
-summary_table_name = os.getenv('SUMMARY_TABLE_NAME', 'CONTENT_SUMMARY')
-user_table_name = os.getenv('SUMMARY_TABLE_NAME', 'USER')
-user_activity_table_name = os.getenv('USER_ACTIVITY_TABLE_NAME', 'USER_ACTIVITY')
+# Get the current stage from environment variables
+stage = os.environ.get('STAGE', 'dev')
+summary_table_name = "content_summary_" + stage
+user_table_name = "user_" + stage
+user_activity_table_name = "user_activity_" + stage
 
 def create_dynamodb_resource(local=False):
     if local:
@@ -168,4 +170,25 @@ class DynamoDBImpl(DB):
         except ClientError as e:
             return False
                 
-            
+    # Updates an item if the key exists. If the key doesn't exist, it adds the item.
+    # Returns the updated/added item if successful, None otherwise.
+    def addOrUpdate(self, item):
+        try:
+            id = item['id']
+            existing_item = self.get(id)
+            if existing_item:
+                # Merge the new item with the existing item
+                existing_item.update(item)
+                self._table.put_item(Item=existing_item)
+                return existing_item
+            else:
+                # Add the new item
+                self._table.put_item(Item=item)
+                return item
+        except ClientError as e:
+            print(f"Exception updating/adding Item in DynamoDB {e}")
+            return None
+        except Exception as e:
+            print(f"Exception updating/adding Item in DynamoDB {e}")
+            return None
+

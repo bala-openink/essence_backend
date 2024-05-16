@@ -1,145 +1,91 @@
-from PIL import Image
+import unittest
+from unittest.mock import patch
+from urllib.parse import urlparse, urlunparse, quote
 
-def resize_and_center(input_path, output_path, new_size):
-    # Open the image
-    image = Image.open(input_path)
+import re
+import time
+
+
+def count_words_simple(text):
+    # Remove leading/trailing whitespace and split the string into words
+    words = text.strip().split()
     
-    # Resize the image while maintaining aspect ratio
-    old_width, old_height = image.size
-    ratio = max(new_size[0] / old_width, new_size[1] / old_height)
-    new_width = int(old_width * ratio)
-    new_height = int(old_height * ratio)
-    resized_image = image.resize((new_width, new_height), Image.ANTIALIAS)
+    # Return the length of the list of words
+    return len(words)
+
+
+def estimate_word_count(text):
+    # Replace consecutive non-word characters with a single space
+    text = re.sub(r'\W+', ' ', text)
     
-    # Create a new image with transparent background
-    new_image = Image.new("RGBA", new_size, (255, 255, 255, 0))
+    # Count the number of spaces plus 1
+    word_count = text.count(' ') + 1
     
-    # Paste the resized image onto the new image, centered
-    left = (new_size[0] - old_width) // 2
-    top = (new_size[1] - old_height) // 2
-    new_image.paste(image, (left, top))
-    
-    # Save the resulting image
-    new_image.save(output_path)
+    return word_count
 
-def resize_and_center1(input_path, output_path, new_size):
-    # Open the image
-    image = Image.open(input_path)
-    
-    # Resize the image while maintaining aspect ratio
-    old_width, old_height = image.size
-    ratio = max(old_width/new_size[0], old_height/new_size[1])
-    new_width = int(old_width * ratio)
-    new_height = int(old_height * ratio)
-    # resized_image = image.resize((new_width, new_height), Image.ANTIALIAS)
-    
-    # Create a new image with transparent background
-    new_image = Image.new("RGBA", new_size, (255, 255, 255, 0))
-    
-    # Paste the resized image onto the new image, centered
-    left = (new_size[0] - old_width) // 2
-    top = (new_size[1] - old_height) // 2
-    new_image.paste(image, (left, top))
-    
-    # Save the resulting image
-    new_image.save(output_path)
+def count_words_fast(text):
+    word_count = 1
+    in_word = False
 
-def resize_image(input_image_path, output_image_path, size):
-    original_image = Image.open(input_image_path)
-    resized_image = original_image.resize(size)
-    resized_image.save(output_image_path)
+    for char in text:
+        if char.isspace():
+            in_word = False
+        else:
+            if not in_word:
+                word_count += 1
+                in_word = True
 
-def add_padding(input_image_path, output_image_path, target_size):
-    # Open the input image
-    input_image = Image.open(input_image_path)
+    return word_count
 
-    # Create a new image with the target size and transparent background
-    output_image = Image.new("RGBA", target_size, (0, 0, 0, 0))
+def count_words(text):
+    start_time = time.time()
 
-    # Calculate the position to paste the input image
-    x_offset = (target_size[0] - input_image.width) // 2
-    y_offset = (target_size[1] - input_image.height) // 2
+    # Call the estimate_word_count function
+    estimated_word_count = count_words_fast(text)
 
-    # Paste the input image onto the output image with padding
-    output_image.paste(input_image, (x_offset, y_offset))
+    # Measure the time after the function call
+    end_time = time.time()
 
-    # Save the output image
-    output_image.save(output_image_path)
+    # Calculate the time taken
+    time_taken = end_time - start_time
+
+    # Print the estimated word count and the time taken
+    print(f"Estimated word count: {estimated_word_count}")
+    print(f"Time taken: {time_taken:.6f} seconds")
 
 
-def resize_and_crop(input_image_path, output_image_path, size):
-    # Open the input image
-    original_image = Image.open(input_image_path)
+def match_regex_list(regex_list, input_string):
+    for pattern in regex_list:
+        if re.search(pattern, input_string):
+            return True
+    return False
 
-    # Calculate aspect ratios
-    original_width, original_height = original_image.size
-    target_width, target_height = size
-    original_aspect_ratio = original_width / original_height
-    target_aspect_ratio = target_width / target_height
+def clean_url(url):
+    # Parse the URL
+    parsed_url = urlparse(url)
+    # Rebuild the URL without query parameters
+    return urlunparse(parsed_url._replace(query="", fragment=""))
 
-    # Resize the image while preserving aspect ratio
-    if original_aspect_ratio > target_aspect_ratio:
-        # Fit image to target width
-        new_width = target_width
-        new_height = int(target_width / original_aspect_ratio)
-    else:
-        # Fit image to target height
-        new_height = target_height
-        new_width = int(target_height * original_aspect_ratio)
+class TestMatchRegexList(unittest.TestCase):
+    def test_match_regex_list(self):
+        regex_list = [r"google\.com/search", r"youtube\.com/", r"linkedin\.com/feed/", r"mail\.google\.com/mail/u/0/#inbox(?!/)"]
+        self.assertTrue(match_regex_list(regex_list, 'https://mail.google.com/mail/u/0/#inbox'))
+        self.assertFalse(match_regex_list(regex_list, 'https://mail.google.com/mail/u/0/#inbox/FMfcgzGxStqZFTjmXvVTcxxGkGZHNhXq'))
+        self.assertFalse(match_regex_list(regex_list, 'https://chat.openai.com/c/15102225-7925-440b-80d0-232f572d82ba'))
+        self.assertTrue(match_regex_list(regex_list, 'https://www.google.com/search?q=blacklist+url&sca_esv'))
+        self.assertTrue(match_regex_list(regex_list, 'https://www.youtube.com/watch?v=1ZQ33OnGFWE'))
+        self.assertTrue(match_regex_list(regex_list, 'https://www.linkedin.com/feed/'))
+        self.assertFalse(match_regex_list(regex_list, 'https://support.google.com/chrome_webstore/answer/2664769?hl=en-GB'))
+        self.assertEqual(clean_url("https://mail.google.com/mail/u/0/#inbox/FMfcgzGxStspstDVKXJDvplKFDgVvDGf"), "https://mail.google.com/mail/u/0/#inbox/FMfcgzGxStspstDVKXJDvplKFDgVvDGf")
 
-    resized_image = original_image.resize((new_width, new_height), Image.ANTIALIAS)
-
-    # Calculate cropping box
-    left = (new_width - target_width) / 2
-    top = (new_height - target_height) / 2
-    right = (new_width + target_width) / 2
-    bottom = (new_height + target_height) / 2
-
-    # Crop the image
-    cropped_image = resized_image.crop((left, top, right, bottom))
-
-    # Save the cropped image
-    cropped_image.save(output_image_path)
-
-def crop(input_image_path, output_image_path, size):
-    # Open the input image
-    original_image = Image.open(input_image_path)
-
-    # Calculate aspect ratios
-    original_width, original_height = original_image.size
-    target_width, target_height = size
-    original_aspect_ratio = original_width / original_height
-    target_aspect_ratio = target_width / target_height
-
-    # Resize the image while preserving aspect ratio
-    if original_aspect_ratio > target_aspect_ratio:
-        # Fit image to target width
-        new_width = target_width
-        new_height = int(target_width / original_aspect_ratio)
-    else:
-        # Fit image to target height
-        new_height = target_height
-        new_width = int(target_height * original_aspect_ratio)
-
-    # resized_image = original_image.resize((new_width, new_height), Image.ANTIALIAS)
-
-    # Calculate cropping box
-    left = (new_width - target_width) / 2
-    top = 0
-    right = (new_width + target_width) / 2
-    bottom = (new_height + target_height) / 2
-
-    # Crop the image
-    cropped_image = original_image.crop((left, top, right, bottom))
-
-    # Save the cropped image
-    cropped_image.save(output_image_path)
+# if __name__ == '__main__':
+#     unittest.main()
 
 
-# Example usage
-input_image_path = "input.png"
-output_image_path = "output.png"
-target_size = (1280, 800)
-crop(input_image_path, output_image_path, target_size)
+text = """
+The Bute House agreement (BHA) was supposed     to stabilise the SNP. Brokered by Nicola Sturgeon      in August 2021, the coalition with the Greens at first appeared a masterstroke, allowing the party to burnish its environmental credentials and bolster its “progressive” image, while presenting a united front and pro-independence majority in Holyrood that it believed would strengthen the case for a second referendum. But, in a shock move, Humza Yousaf ripped up the agreement on Thursday morning and fired the Green co-leaders as ministers from his government. The SNP leader now faces a no-confidence motion, which he could well lose. He has promised to fight on and contest the motion, but what was supposed to be a show of strength has ended up exposing his weakness.  Since the deal was first brokered, the culture war has moved on apace. Without Sturgeon at the helm, the party – always a fragile alliance of right and left, progressives and conservatives, fundamentalists and gradualists – has become bitterly divided over the ill-fated gender recognition reform bill and the Hate Crime and Public Order (Scotland) Act. Many believe its leaders’ fixation with “identity politics” has distracted from more urgent issues such as education, the NHS and child poverty, which they say used to be at the heart of the SNP government’s mission.  Alex Salmond’s Alba party – which some hoped would become a vessel for the blood-letting of the party’s rebel elements – instead became a rallying point for disaffected social conservatives whose energies have been directed at undermining the SNP leadership. The degree to which the SNP and the media underestimated its ability to inflict damage can be seen in the power that former leadership contender Ash Regan, now Alba’s only MSP, holds as Yousaf faces a vote of no confidence next week. Her vote will prove decisive.  “No great loss,” was Yousaf’s verdict on Regan’s defection. Yet, six months on, what do you know? With the numbers stacked evenly for and against the first minister, his future lies in her hands. She must have been brimful of schadenfreude on Friday morning as she presented him with her list of “demands” in exchange for her support. They include that he would “defend the rights of women and children” and “progress made towards independence”.  Scottish Green party co-leaders Lorna Slater and Patrick Harvie speak to the media after Humza Yousaf terminated the Bute House agreement on 25 April 2024. View image in fullscreen Scottish Green party co-leaders Lorna Slater and Patrick Harvie speak to the media after Humza Yousaf terminated the Bute House agreement on 25 April 2024. Photograph: Lesley Martin/PA Yousaf’s leadership has been cursed from the outset. He inherited an impossible set of circumstances and conspired to make them worse, with one misjudgment after another. It is not his fault that the SNP’s coalition partners have become ever more forthright on identity issues, criticising the Cass review and the decision to pause the prescription of puberty blockers; nor that his centre-right leadership rival Kate Forbes weaponised the Bute House agreement by presenting it as an albatross around the party’s neck.  But he has no one but himself to blame for his inconsistency, such as his presentation of himself at first as the continuity candidate and then, as the party became mired in a fraud investigation, as a new broom. Nor for the lack of consultation on the declaration of a council tax freeze and failures of communication on the Hate Crime Act, which allowed bad-faith actors to present it as an attack on freedom of speech.   This week, he found himself in a no-win situation, born of SNP hubris. The party’s setting of a too-ambitious climate target was always going to end in a climbdown. And a climbdown was always going to anger the Greens, who called an extraordinary general meeting to allow their members to vote on the coalition. Co-leaders Patrick Harvie and Lorna Slater may rail against the SNP’s “betrayal” on the ground that Yousaf pre-empted the meeting and dumped them first. But what choice did he have? The alternative was to subject the party to weeks of speculation, to have his opponents say: “Just look how the tail wags the dog.”  The first minister is also watching his party haemorrhage support. Last week, six SNP MSPs abstained rather than back the government’s victims, witnesses and justice reform (Scotland) bill, while a recent YouGov poll suggests the party will lose 28 MPs at the general election.  It is deluded to suppose the Greens were the only source of the SNP’s declining popularity. Shedding them may win back voters scared off by the party’s alleged “wokeness”; but it does nothing to dispel the sense that, for the 17 years it has been in power, it has repeatedly overpromised and underdelivered. Nor will it rid the party of the shadow cast by the embezzlement charges brought against Sturgeon’s husband and former SNP chief executive, Peter Murrell.  Humza Yousaf looking at the ground during a press conference. A Scottish flag is in the background. What was the SNP and Greens’ deal and what happens now it has ended? Read more  As Yousaf’s advisers must have known, the abrupt severing of the Bute House agreement will cause as many problems as it solves. Now, instead of being seen as capitulating to the Greens, he will be seen as capitulating to centre-right figures within his own party. That wing has been strengthened by Yousaf’s misstep. Forbes, who is likely to appeal to those rural voters who switched their allegiance to the SNP under Salmond, seems to be the only figure who could accrue enough support across the chamber to replace him.  Either way, a lurch to the right is inevitable. If Yousaf decides against resigning, and holds on in next week’s vote, he will be even more beholden to the Forbes camp than before. And if Forbes takes his place, her fiscal and social conservatism will become the new normal.  As I write, Yousaf has cancelled a major speech on the labour strategy in an independent Scotland, his ability to lead neutered as he decides whether or not to jump ship before the vote. And who benefits from this mess? The Scottish Labour party, whose electoral gains the jettisoning of the Bute House agreement was intended to offset. Already, its leader, Anas Sarwar, is attempting to capitalise by lodging his own vote of no confidence in the Scottish government. All the SNP faithful can do is to lament their party’s missteps as their goal of separation from the UK recedes ever further into the distance.  Dani Garavelli is a freelance journalist and columnist for the Herald
+The Bute House agreement (BHA) was supposed    to stabilise the SNP. Brokered by Nicola Sturgeon in August 2021, the coalition with the Greens at first appeared a masterstroke, allowing the party to burnish its environmental credentials and bolster its “progressive” image, while presenting a united front and pro-independence majority in Holyrood that it believed would strengthen the case for a second referendum. But, in a shock move, Humza Yousaf ripped up the agreement on Thursday morning and fired the Green co-leaders as ministers from his government. The SNP leader now faces a no-confidence motion, which he could well lose. He has promised to fight on and contest the motion, but what was supposed to be a show of strength has ended up exposing his weakness.  Since the deal was first brokered, the culture war has moved on apace. Without Sturgeon at the helm, the party – always a fragile alliance of right and left, progressives and conservatives, fundamentalists and gradualists – has become bitterly divided over the ill-fated gender recognition reform bill and the Hate Crime and Public Order (Scotland) Act. Many believe its leaders’ fixation with “identity politics” has distracted from more urgent issues such as education, the NHS and child poverty, which they say used to be at the heart of the SNP government’s mission.  Alex Salmond’s Alba party – which some hoped would become a vessel for the blood-letting of the party’s rebel elements – instead became a rallying point for disaffected social conservatives whose energies have been directed at undermining the SNP leadership. The degree to which the SNP and the media underestimated its ability to inflict damage can be seen in the power that former leadership contender Ash Regan, now Alba’s only MSP, holds as Yousaf faces a vote of no confidence next week. Her vote will prove decisive.  “No great loss,” was Yousaf’s verdict on Regan’s defection. Yet, six months on, what do you know? With the numbers stacked evenly for and against the first minister, his future lies in her hands. She must have been brimful of schadenfreude on Friday morning as she presented him with her list of “demands” in exchange for her support. They include that he would “defend the rights of women and children” and “progress made towards independence”.  Scottish Green party co-leaders Lorna Slater and Patrick Harvie speak to the media after Humza Yousaf terminated the Bute House agreement on 25 April 2024. View image in fullscreen Scottish Green party co-leaders Lorna Slater and Patrick Harvie speak to the media after Humza Yousaf terminated the Bute House agreement on 25 April 2024. Photograph: Lesley Martin/PA Yousaf’s leadership has been cursed from the outset. He inherited an impossible set of circumstances and conspired to make them worse, with one misjudgment after another. It is not his fault that the SNP’s coalition partners have become ever more forthright on identity issues, criticising the Cass review and the decision to pause the prescription of puberty blockers; nor that his centre-right leadership rival Kate Forbes weaponised the Bute House agreement by presenting it as an albatross around the party’s neck.  But he has no one but himself to blame for his inconsistency, such as his presentation of himself at first as the continuity candidate and then, as the party became mired in a fraud investigation, as a new broom. Nor for the lack of consultation on the declaration of a council tax freeze and failures of communication on the Hate Crime Act, which allowed bad-faith actors to present it as an attack on freedom of speech.   This week, he found himself in a no-win situation, born of SNP hubris. The party’s setting of a too-ambitious climate target was always going to end in a climbdown. And a climbdown was always going to anger the Greens, who called an extraordinary general meeting to allow their members to vote on the coalition. Co-leaders Patrick Harvie and Lorna Slater may rail against the SNP’s “betrayal” on the ground that Yousaf pre-empted the meeting and dumped them first. But what choice did he have? The alternative was to subject the party to weeks of speculation, to have his opponents say: “Just look how the tail wags the dog.”  The first minister is also watching his party haemorrhage support. Last week, six SNP MSPs abstained rather than back the government’s victims, witnesses and justice reform (Scotland) bill, while a recent YouGov poll suggests the party will lose 28 MPs at the general election.  It is deluded to suppose the Greens were the only source of the SNP’s declining popularity. Shedding them may win back voters scared off by the party’s alleged “wokeness”; but it does nothing to dispel the sense that, for the 17 years it has been in power, it has repeatedly overpromised and underdelivered. Nor will it rid the party of the shadow cast by the embezzlement charges brought against Sturgeon’s husband and former SNP chief executive, Peter Murrell.  Humza Yousaf looking at the ground during a press conference. A Scottish flag is in the background. What was the SNP and Greens’ deal and what happens now it has ended? Read more  As Yousaf’s advisers must have known, the abrupt severing of the Bute House agreement will cause as many problems as it solves. Now, instead of being seen as capitulating to the Greens, he will be seen as capitulating to centre-right figures within his own party. That wing has been strengthened by Yousaf’s misstep. Forbes, who is likely to appeal to those rural voters who switched their allegiance to the SNP under Salmond, seems to be the only figure who could accrue enough support across the chamber to replace him.  Either way, a lurch to the right is inevitable. If Yousaf decides against resigning, and holds on in next week’s vote, he will be even more beholden to the Forbes camp than before. And if Forbes takes his place, her fiscal and social conservatism will become the new normal.  As I write, Yousaf has cancelled a major speech on the labour strategy in an independent Scotland, his ability to lead neutered as he decides whether or not to jump ship before the vote. And who benefits from this mess? The Scottish Labour party, whose electoral gains the jettisoning of the Bute House agreement was intended to offset. Already, its leader, Anas Sarwar, is attempting to capitalise by lodging his own vote of no confidence in the Scottish government. All the SNP faithful can do is to lament their party’s missteps as their goal of separation from the UK recedes ever further into the distance.  Dani Garavelli is a freelance journalist and columnist for the Herald
+The Bute House agreement     (BHA) was supposed to stabilise the    SNP. Brokered by    Nicola Sturgeon in August 2021, the coalition with the Greens at first appeared a masterstroke, allowing the party to burnish its environmental credentials and bolster its “progressive” image, while presenting a united front and pro-independence majority in Holyrood that it believed would strengthen the case for a second referendum. But, in a shock move, Humza Yousaf ripped up the agreement on Thursday morning and fired the Green co-leaders as ministers from his government. The SNP leader now faces a no-confidence motion, which he could well lose. He has promised to fight on and contest the motion, but what was supposed to be a show of strength has ended up exposing his weakness.  Since the deal was first brokered, the culture war has moved on apace. Without Sturgeon at the helm, the party – always a fragile alliance of right and left, progressives and conservatives, fundamentalists and gradualists – has become bitterly divided over the ill-fated gender recognition reform bill and the Hate Crime and Public Order (Scotland) Act. Many believe its leaders’ fixation with “identity politics” has distracted from more urgent issues such as education, the NHS and child poverty, which they say used to be at the heart of the SNP government’s mission.  Alex Salmond’s Alba party – which some hoped would become a vessel for the blood-letting of the party’s rebel elements – instead became a rallying point for disaffected social conservatives whose energies have been directed at undermining the SNP leadership. The degree to which the SNP and the media underestimated its ability to inflict damage can be seen in the power that former leadership contender Ash Regan, now Alba’s only MSP, holds as Yousaf faces a vote of no confidence next week. Her vote will prove decisive.  “No great loss,” was Yousaf’s verdict on Regan’s defection. Yet, six months on, what do you know? With the numbers stacked evenly for and against the first minister, his future lies in her hands. She must have been brimful of schadenfreude on Friday morning as she presented him with her list of “demands” in exchange for her support. They include that he would “defend the rights of women and children” and “progress made towards independence”.  Scottish Green party co-leaders Lorna Slater and Patrick Harvie speak to the media after Humza Yousaf terminated the Bute House agreement on 25 April 2024. View image in fullscreen Scottish Green party co-leaders Lorna Slater and Patrick Harvie speak to the media after Humza Yousaf terminated the Bute House agreement on 25 April 2024. Photograph: Lesley Martin/PA Yousaf’s leadership has been cursed from the outset. He inherited an impossible set of circumstances and conspired to make them worse, with one misjudgment after another. It is not his fault that the SNP’s coalition partners have become ever more forthright on identity issues, criticising the Cass review and the decision to pause the prescription of puberty blockers; nor that his centre-right leadership rival Kate Forbes weaponised the Bute House agreement by presenting it as an albatross around the party’s neck.  But he has no one but himself to blame for his inconsistency, such as his presentation of himself at first as the continuity candidate and then, as the party became mired in a fraud investigation, as a new broom. Nor for the lack of consultation on the declaration of a council tax freeze and failures of communication on the Hate Crime Act, which allowed bad-faith actors to present it as an attack on freedom of speech.   This week, he found himself in a no-win situation, born of SNP hubris. The party’s setting of a too-ambitious climate target was always going to end in a climbdown. And a climbdown was always going to anger the Greens, who called an extraordinary general meeting to allow their members to vote on the coalition. Co-leaders Patrick Harvie and Lorna Slater may rail against the SNP’s “betrayal” on the ground that Yousaf pre-empted the meeting and dumped them first. But what choice did he have? The alternative was to subject the party to weeks of speculation, to have his opponents say: “Just look how the tail wags the dog.”  The first minister is also watching his party haemorrhage support. Last week, six SNP MSPs abstained rather than back the government’s victims, witnesses and justice reform (Scotland) bill, while a recent YouGov poll suggests the party will lose 28 MPs at the general election.  It is deluded to suppose the Greens were the only source of the SNP’s declining popularity. Shedding them may win back voters scared off by the party’s alleged “wokeness”; but it does nothing to dispel the sense that, for the 17 years it has been in power, it has repeatedly overpromised and underdelivered. Nor will it rid the party of the shadow cast by the embezzlement charges brought against Sturgeon’s husband and former SNP chief executive, Peter Murrell.  Humza Yousaf looking at the ground during a press conference. A Scottish flag is in the background. What was the SNP and Greens’ deal and what happens now it has ended? Read more  As Yousaf’s advisers must have known, the abrupt severing of the Bute House agreement will cause as many problems as it solves. Now, instead of being seen as capitulating to the Greens, he will be seen as capitulating to centre-right figures within his own party. That wing has been strengthened by Yousaf’s misstep. Forbes, who is likely to appeal to those rural voters who switched their allegiance to the SNP under Salmond, seems to be the only figure who could accrue enough support across the chamber to replace him.  Either way, a lurch to the right is inevitable. If Yousaf decides against resigning, and holds on in next week’s vote, he will be even more beholden to the Forbes camp than before. And if Forbes takes his place, her fiscal and social conservatism will become the new normal.  As I write, Yousaf has cancelled a major speech on the labour strategy in an independent Scotland, his ability to lead neutered as he decides whether or not to jump ship before the vote. And who benefits from this mess? The Scottish Labour party, whose electoral gains the jettisoning of the Bute House agreement was intended to offset. Already, its leader, Anas Sarwar, is attempting to capitalise by lodging his own vote of no confidence in the Scottish government. All the SNP faithful can do is to lament their party’s missteps as their goal of separation from the UK recedes ever further into the distance.  Dani Garavelli is a freelance journalist and columnist for the Herald
+"""
 
-
+count_words(text)

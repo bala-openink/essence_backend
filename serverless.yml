@@ -4,6 +4,10 @@ provider:
   name: aws
   runtime: provided
   region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  environment:
+  STAGE: ${opt:stage, 'dev'}
+
   memorySize: 2048
   timeout: 60
   ecr:
@@ -37,5 +41,10 @@ functions:
           path: /{any+} # This is a catch-all path
           method: '*'
           cors: true
+          http:
+            httpVersion: '2.0' # Enable HTTP/2
+
+
     environment:
       ENVIRONMENT: "production"
+      STAGE: ${opt:stage, 'dev'}

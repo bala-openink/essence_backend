@@ -4,6 +4,9 @@
  - Using the Serverless Framework for deployment, https://www.serverless.com/framework/docs/getting-started/
  - AWS API gateway for accessing API
 
+To build, use poetry to manage dependencies
+> poetry init
+> poetry shell - to get into the venv
 
 To run locally, 
 
@@ -28,4 +31,4 @@ docker build -t ocs-backend .
 > serverless deploy
 
  - for deploying only the function, without docker or env changes. Use this, as its fast
-> serverless deploy -f app
+> serverless deploy --stage live -f app

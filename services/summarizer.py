@@ -1,7 +1,6 @@
-import boto3
 import time
+import json
 
-from boto3.dynamodb.conditions import Key
 # from transformers import pipeline
 
 from openai import OpenAI
@@ -11,51 +10,117 @@ from services import util
 from lib import db, log
 import config
 
-lambda_client = boto3.client("lambda")
-s3_client = boto3.client("s3")
-dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table("AudioChunksStatus")  # DynamoDB table to track status
+logger = log.setup_logger()
 
 client = OpenAI(
     # This is the default and can be omitted
     api_key=util.get_secret("OPENAI_API_KEY")
 )
 
+# Convenience method to remove unnecessary fields before responding to client
+def strip_for_transport(item):
+    if item and item["transcript"]:
+        item["transcript"] = None
+        item["audio_summary_url"] = None
+    return item
 
-def summarize(text):
-    return summarize_with_openai(text)
+def process_in_stream(user_id, id, clean_url, transcript, instructions, include_audio, item):
+    if not item:
+        item = {
+            "user_id": user_id or config.DEFAULT_USERNAME,
+            "id": id,
+            "url": clean_url,
+            "transcript": transcript,
+            "dateCreated": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        }
 
-def summarize_with_openai(text, model="gpt-3.5-turbo", temperature=0.5, max_tokens=500):
-    """
-    Summarize a given text using OpenAI's GPT model.
+    # Make the GPT call to summarize the transcript and yield immediately
+    summary_instructions = build_instructions("summary")
+    summary_para = gpt(transcript, summary_instructions)
+    if summary_para:
+        item["text_summary"] = summary_para
+        db.get_summary_table().addOrUpdate(item)
+        yield json.dumps(strip_for_transport(item)) + "\n\n";
 
-    Args:
-    - text (str): The text to summarize.
-    - model (str): Model ID of the OpenAI GPT model to use.
-    - temperature (float): Sampling temperature for the model. Lower values make the output more deterministic.
-    - max_tokens (int): Maximum number of tokens to generate in the output.
+    # Make the GPT call to infer other aspects and yield immediately
+    inference_instructions = build_instructions("inference")
+    inference = gpt(transcript, inference_instructions)
+    try:
+        inference_json = json.loads(inference)
+        item.update(inference_json)
+        db.get_summary_table().addOrUpdate(item)
+        yield json.dumps(strip_for_transport(item)) + "\n\n";
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON response from OpenAI API.")
+    
+    # Create an audio summary and yield
+    if include_audio and summary_para:
+        audio_file_url, audio_file_local = audio_processor.text_to_audio_polly(id, summary_para)
+        item["audio_summary_url"] = audio_file_url
+        db.get_summary_table().addOrUpdate(item)
+        audio_url_public = util.generate_audio_url_public(audio_file_url)
+        if audio_url_public:
+            item["audio_url"] = audio_url_public
+            yield json.dumps(strip_for_transport(item)) + "\n\n";
 
-    Returns:
-    - str: The summarized text.
-    """
 
-    # instructions = """Summarize the article provided, beginning with a one-line inference and conclusion. 
-    # Ensure the summary's length reflects the original article's length and complexity, offering an in-depth and thorough analysis without sacrificing clarity and conciseness. 
-    # Accurately convey the author's intended meaning, focusing solely on the content of the text. 
-    # Format the summary in a clear paragraph structure, highlighting key individuals, firms, or entities mentioned. Avoid external information"""
+def text_summary(user_id, id, clean_url, transcript, item):
+    if not item:
+        item = {
+            "user_id": user_id or config.DEFAULT_USERNAME,
+            "id": id,
+            "url": clean_url,
+            "transcript": transcript,
+            "dateCreated": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        }
 
-    # instructions = """Create a concise, comprehensive summary of the text, starting with a single-line overview that captures the article's essence. 
-    # The summary should be proportional to the source's length and complexity, aiming for depth and complexity while maintaining readability.
-    # It's crucial to reflect the author's intent accurately, sticking to the provided text for information. 
-    # Present the summary in paragraph format for straightforward interpretation, including mentions of significant people, firms, or entities."""
+    # Make the GPT call to summarize the transcript
+    summary_instructions = build_instructions("summary")
+    summary_para = gpt(transcript, summary_instructions)
+    if summary_para:
+        item["text_summary"] = summary_para
+        db.get_summary_table().addOrUpdate(item)
+        return json.dumps(strip_for_transport(item))
 
-    # TODO - Move instructions to a Database
-    # TODO - Have multiple instructions to summarize articles better based on the article genre and the reader
-    instructions = """Create an accurate detailed summary of the article, written as a concise, standalone article, proportional to the original content's length and complexity. 
-    It should naturally weave in the background, key individuals, firms, or entities, important concepts, and significant data points from the original content. 
-    The summary should use an active voice and flow as if it's an original piece, providing a clear, engaging overview of the main points. 
-    Aim for a style that mirrors the natural storytelling of the original, and use paragraphs and bullets as needed for seperation."""
 
+def inference(user_id, id, clean_url, transcript, include_audio, item):
+    if not item:
+        item = {
+            "user_id": user_id or config.DEFAULT_USERNAME,
+            "id": id,
+            "url": clean_url,
+            "transcript": transcript,
+            "dateCreated": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        }
+
+    # Make the GPT call to infer other aspects 
+    inference_instructions = build_instructions("inference")
+    inference = gpt(transcript, inference_instructions)
+    try:
+        inference_json = json.loads(inference)
+        item.update(inference_json)
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON response from OpenAI API.")
+    
+    # Create an audio summary
+    audio_file_url = None
+    if include_audio and item["text_summary"]:
+        audio_file_url, audio_file_local = audio_processor.text_to_audio_polly(id, item["text_summary"])
+        item["audio_summary_url"] = audio_file_url
+
+    db.get_summary_table().addOrUpdate(item)
+
+    if audio_file_url:
+        audio_url_public = util.generate_audio_url_public(audio_file_url)
+        if audio_url_public:
+            item["audio_url"] = audio_url_public
+    
+    return json.dumps(strip_for_transport(item))
+
+def gpt(text, instructions):
+    return gpt_with_openai(text, instructions)
+
+def gpt_with_openai(text, instructions, model="gpt-3.5-turbo", temperature=0.5, max_tokens=4000):
     response = client.chat.completions.create(
         messages=[
             {"role": "system", "content": instructions},
@@ -73,82 +138,25 @@ def summarize_with_openai(text, model="gpt-3.5-turbo", temperature=0.5, max_toke
     print(f"Summary :: {summary}")
     return summary
 
-# def summarize_with_opensource_llm(text, model_name, min_length=200, max_length=400):
-#     """
-#     Summarizes the given text using the specified LLaMa model.
+def build_instructions(type):
+    inference_instructions = f"""
+    You are an AI assistant specializing in text analysis. Study the article thoroughly and provide the following information in a JSON format:
 
-#     :param text: The text to be summarized.
-#     :param model_name: The name of the LLaMa model.
-#     :param min_length: Minimum length of the summary.
-#     :param max_length: Maximum length of the summary.
-#     :return: The summarized text.
-#     """
-#     # Load the summarization pipeline
-#     # summarizer = pipeline("summarization", model=model_name, tokenizer="t5-base", framework="tf")
-#     summarizer = pipeline("summarization", model=model_name)
-#     # Summarize the text
-#     summary = summarizer(
-#         text, min_length=min_length, max_length=max_length, do_sample=False
-#     )
-#     return summary[0]["summary_text"]
+    {{
+    "depth":"On a scale of 1 to 5, 1 for shallow and 5 for deep, rate how well the key topic is covered in the article",
+    "tone": "The overall tone of the article in one word(e.g., formal, informal, objective, subjective, serious, humorous, inspirational, relaxed, cynical, etc)",
+    "sentiment": "The sentiment expressed in the article in one word(e.g., positive, negative, neutral)",
+    "key_topics": ["A list of key topics or subjects covered in the article. Each topic should have up to 2 words. Pick up to 6 most relevant topics"],
+    }}
 
-
-# def summarize_text_in_chunks(
-#     text, model_name, max_chunk_length=800, summary_max_length=80
-# ):
-#     """
-#     Summarizes the text by splitting it into chunks and summarizing each chunk.
-
-#     :param text: The text to be summarized.
-#     :param model: The model to use for summarization.
-#     :param max_chunk_length: Maximum length of each text chunk in tokens.
-#     :param summary_max_length: Maximum length of the summary for each chunk.
-#     :return: The summarized text.
-#     """
-#     # Initialize the summarization pipeline
-#     summarizer = pipeline("summarization", model=model_name)
-
-#     # Split the text into chunks
-#     words = text.split()
-#     chunks = [
-#         " ".join(words[i : i + max_chunk_length])
-#         for i in range(0, len(words), max_chunk_length)
-#     ]
-
-#     # Summarize each chunk and combine
-#     summarized_chunks = [
-#         summarizer(chunk, max_length=summary_max_length)[0]["summary_text"]
-#         for chunk in chunks
-#     ]
-#     final_summary = " ".join(summarized_chunks)
-
-#     return final_summary
-
-
-
-def process_transcript(user_id, id, clean_url, transcript, localMode=True):  
-    if(transcript):
-        # summarize the transcript
-        text_summary = summarize(transcript)
-        print(f"Final text summary :: {text_summary}")
-        # convert text to audio
-        audio_file_url, audio_file_local = audio_processor.text_to_audio_polly(
-            id, text_summary
-        )
-
-        # persist the summary output
-        item = {
-            "user_id": user_id or config.DEFAULT_USERNAME,
-            "id": id,
-            "url": clean_url,
-            "transcript": transcript,
-            "text_summary": text_summary,
-            "audio_summary_url": audio_file_url,
-            "dateCreated": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        }
-        db.get_summary_table().add(item)
-
-        return item
+Please provide your response in the specified JSON format.
+    """
+    summary_instructions = """Create an accurate detailed summary of the article, written as a concise, standalone article, proportional to the original content's length and complexity. 
+    It should naturally weave in the background, key individuals, firms, or entities, important concepts, and significant data points from the original content. 
+    The summary should use an active voice and flow as if it's an original piece, providing a clear, engaging overview of the main points. 
+    Aim for a style that mirrors the natural storytelling of the original, and use paragraphs and bullets as needed for seperation."""
+    
+    if type == "inference":
+        return inference_instructions
     else:
-        raise Exception(f"Error in processing the summary for {id}. Transcript could not be extracted")
-
+        return summary_instructions
