@@ -6,6 +6,7 @@ import concurrent.futures
 from urllib.parse import urlparse, urlunparse, quote
 from flask import make_response, jsonify, Response
 import re
+import requests
 
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
@@ -74,7 +75,7 @@ def upload_to_s3(file_path, bucket_name, s3_key, index=0):
     try:
         s3_client = boto3.client("s3")
         s3_client.upload_file(file_path, bucket_name, f"{stage}/{s3_key}")
-        url = f"s3://{bucket_name}/{s3_key}"
+        url = f"s3://{bucket_name}/{stage}/{s3_key}"
         print(f"File {file_path} uploaded to {url}")
         return index, url
     except FileNotFoundError:
@@ -119,6 +120,17 @@ def clean_url(url):
     parsed_url = urlparse(url)
     # Rebuild the URL without query parameters
     return urlunparse(parsed_url._replace(query=""))
+
+def shorten_url(url):
+    api_url = "http://tinyurl.com/api-create.php"
+    params = {'url': url}
+    
+    response = requests.get(api_url, params=params)
+    
+    if response.status_code == 200:
+        return response.text
+    else:
+        return None
 
 def generate_id(url):
     # Hash the clean URL

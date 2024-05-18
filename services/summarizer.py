@@ -98,13 +98,15 @@ def inference(user_id, id, clean_url, transcript, include_audio, item):
     inference = gpt(transcript, inference_instructions)
     try:
         inference_json = json.loads(inference)
+        # Adding the shortened URL to the tweet response from GPT
+        inference_json["tweet"] = inference_json["tweet"] + " - " + util.shorten_url(clean_url)
         item.update(inference_json)
     except json.JSONDecodeError:
         print("Error: Invalid JSON response from OpenAI API.")
     
     # Create an audio summary
     audio_file_url = None
-    if include_audio and item["text_summary"]:
+    if include_audio and item.get("text_summary"):
         audio_file_url, audio_file_local = audio_processor.text_to_audio_polly(id, item["text_summary"])
         item["audio_summary_url"] = audio_file_url
 
@@ -146,6 +148,7 @@ def build_instructions(type):
     "depth":"On a scale of 1 to 5, 1 for shallow and 5 for deep, rate how well the key topic is covered in the article",
     "tone": "The overall tone of the article in one word(e.g., formal, informal, objective, subjective, serious, humorous, inspirational, relaxed, cynical, etc)",
     "sentiment": "The sentiment expressed in the article in one word(e.g., positive, negative, neutral)",
+    "tweet": "Summarize this article in a single, impactful sentence that is both informative and tweetable within 240 characters",
     "key_topics": ["A list of key topics or subjects covered in the article. Each topic should have up to 2 words. Pick up to 6 most relevant topics"],
     }}
 
