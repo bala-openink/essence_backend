@@ -5,24 +5,41 @@ provider:
   runtime: provided
   region: us-east-1
   stage: ${opt:stage, 'dev'}
-  environment:
-  STAGE: ${opt:stage, 'dev'}
-
   memorySize: 2048
-  timeout: 60
+  timeout: 60  # Adjusted to 30 seconds to comply with HTTP API limits
+  environment:
+    STAGE: ${opt:stage, 'dev'}  # Moved under environment
+
   ecr:
     images:
       ocsbackend:
         path: ./
+        platform: linux/amd64
+
+  httpApi:
+    cors:
+      allowedOrigins:
+        - '*'
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - OPTIONS
+        - GET
+        - POST
+        - PUT
+        - DELETE
+      allowCredentials: false
+
   iamRoleStatements:
     - Effect: Allow
       Action:
         - dynamodb:*
-      Resource: "arn:aws:dynamodb:us-east-1:322521590770:*"  # Grants full access to DynamoDB
+      Resource: "arn:aws:dynamodb:us-east-1:322521590770:*"
     - Effect: Allow
       Action:
         - s3:*
-      Resource: "arn:aws:s3:::*"  # Grants full access to all S3 buckets
+      Resource: "arn:aws:s3:::*"
     - Effect: Allow
       Action:
         - polly:SynthesizeSpeech
@@ -38,13 +55,9 @@ functions:
       name: ocsbackend
     events:
       - httpApi: 
-          path: /{any+} # This is a catch-all path
-          method: '*'
-          cors: true
-          http:
-            httpVersion: '2.0' # Enable HTTP/2
-
-
+          path: /{any+}
+          method: '*' 
     environment:
       ENVIRONMENT: "production"
       STAGE: ${opt:stage, 'dev'}
+

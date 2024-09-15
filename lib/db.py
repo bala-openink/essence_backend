@@ -4,12 +4,15 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
+from boto3.dynamodb.conditions import Key, Attr
 
 import config
 
 _SUMMARY_TABLE = None
 _USER_TABLE = None
 _USER_ACTIVITY_TABLE = None
+_ARTICLE_TABLE = None
+_USER_LISTEN_HISTORY_TABLE = None
 
 # Using environment variable to determine local or production deployment
 environment = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
@@ -18,6 +21,8 @@ stage = os.environ.get('STAGE', 'dev')
 summary_table_name = "content_summary_" + stage
 user_table_name = "user_" + stage
 user_activity_table_name = "user_activity_" + stage
+article_table_name = "article_" + stage
+user_listen_history_table_name = "user_listen_history_" + stage
 
 def create_dynamodb_resource(local=False):
     if local:
@@ -58,6 +63,38 @@ def create_table(dynamodb, table_name):
     print(f"Table {table_name} created successfully.")
     return table  # Return the newly created table object.
 
+# Creates and provide the Singleton instance of the DB impl for ARTICLE table, 
+# with a GSI on processing_status and date_published
+def create_article_table(dynamodb, table_name):
+    table = dynamodb.create_table(
+        TableName=table_name,
+        KeySchema=[
+            {'AttributeName': 'id', 'KeyType': 'HASH'},  # Partition key
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'id', 'AttributeType': 'S'},
+            {'AttributeName': 'processing_status', 'AttributeType': 'S'},
+            {'AttributeName': 'date_published', 'AttributeType': 'S'}
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                'IndexName': 'ProcessingStatusDateIndex',
+                'KeySchema': [
+                    {'AttributeName': 'processing_status', 'KeyType': 'HASH'},
+                    {'AttributeName': 'date_published', 'KeyType': 'RANGE'}
+                ],
+                'Projection': {'ProjectionType': 'ALL'},
+                'ProvisionedThroughput': {
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
+                }
+            }
+        ],
+        ProvisionedThroughput={'ReadCapacityUnits': 10, 'WriteCapacityUnits': 10}
+    )
+    table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+    print(f"Table {table_name} created successfully.")
+    return table
 
 # Creates and provide the Singleton instance of the DB impl for Summary table
 def get_summary_table():
@@ -109,6 +146,37 @@ def get_user_activity_table():
         _USER_ACTIVITY_TABLE = DynamoDBImpl(table)
     return _USER_ACTIVITY_TABLE
 
+# Creates and provide the Singleton instance of the DB impl for ARTICLE table
+def get_article_table():
+    global _ARTICLE_TABLE
+    if _ARTICLE_TABLE is None:
+        dynamodb = create_dynamodb_resource(local=(environment == 'LOCAL'))
+
+        # Try to get the table if it exists
+        table = check_table_exists(dynamodb, article_table_name)    
+
+        if table is None:
+            print(f"Table {article_table_name} does not exist. Creating table...")
+            table = create_article_table(dynamodb, article_table_name)
+
+        _ARTICLE_TABLE = DynamoDBImpl(table)
+    return _ARTICLE_TABLE
+
+# Creates and provide the Singleton instance of the DB impl for USER_LISTEN_HISTORY table
+def get_user_listen_history_table():
+    global _USER_LISTEN_HISTORY_TABLE
+    if _USER_LISTEN_HISTORY_TABLE is None:
+        dynamodb = create_dynamodb_resource(local=(environment == 'LOCAL'))
+
+        # Try to get the table if it exists
+        table = check_table_exists(dynamodb, user_listen_history_table_name)
+
+        if table is None:
+            print(f"Table {user_listen_history_table_name} does not exist. Creating table...")
+            table = create_table(dynamodb, user_listen_history_table_name)
+
+        _USER_LISTEN_HISTORY_TABLE = DynamoDBImpl(table)
+    return _USER_LISTEN_HISTORY_TABLE
 
 # DB interface
 class DB(object):
@@ -192,3 +260,41 @@ class DynamoDBImpl(DB):
             print(f"Exception updating/adding Item in DynamoDB {e}")
             return None
 
+    def query_by_processing_status_and_date(self, processing_status, start_date=None, end_date=None, limit=10):
+        key_condition = Key('processing_status').eq(processing_status)
+        if start_date and end_date:
+            key_condition &= Key('date_published').between(start_date, end_date)
+        elif start_date:
+            key_condition &= Key('date_published').gte(start_date)
+        elif end_date:
+            key_condition &= Key('date_published').lte(end_date)
+
+        response = self._table.query(
+            IndexName='ProcessingStatusDateIndex',
+            KeyConditionExpression=key_condition,
+            ScanIndexForward=False,  # This will sort in descending order (newest first)
+            Limit=limit
+        )
+        return response['Items']
+
+    def query_by_processing_status_date_and_category(self, processing_status, category=None, start_date=None, end_date=None, limit=10):
+        key_condition = Key('processing_status').eq(processing_status)
+        if start_date and end_date:
+            key_condition &= Key('date_published').between(start_date, end_date)
+        elif start_date:
+            key_condition &= Key('date_published').gte(start_date)
+        elif end_date:
+            key_condition &= Key('date_published').lte(end_date)
+
+        query_params = {
+            'IndexName': 'ProcessingStatusDateIndex',
+            'KeyConditionExpression': key_condition,
+            'ScanIndexForward': False,  # This will sort in descending order (newest first)
+            'Limit': limit
+        }
+
+        if category:
+            query_params['FilterExpression'] = Attr('categories').contains(category)
+
+        response = self._table.query(**query_params)
+        return response['Items']

@@ -26,6 +26,13 @@ RUN poetry config virtualenvs.create false
 # Install dependencies using Poetry
 RUN poetry install --no-dev --no-interaction --no-ansi
 
+# # Step 2: Copy the pre-extracted FFmpeg and FFprobe binaries into the container
+COPY bin/ffprobe /usr/local/bin/ffprobe
+COPY bin/ffmpeg /usr/local/bin/ffmpeg
+
+# Step 3: Make sure the binaries are executable
+RUN chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+
 COPY . ${LAMBDA_TASK_ROOT}/
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug

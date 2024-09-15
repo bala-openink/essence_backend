@@ -23,8 +23,8 @@ It runs on port 8000 by default (let it be)
 
 To deploy in AWS lambda
 
-1. Build the docker image
-docker build -t ocs-backend .
+1. Build the docker image. Note the platform linux/amd64 - This is needed for the lambda's unix flavor
+docker buildx build --no-cache --platform linux/amd64 -t ocs-backend --load .
 
 2. Deploy using serverless
  - for full deploy

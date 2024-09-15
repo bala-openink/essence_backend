@@ -1,6 +1,7 @@
 DEFAULT_USERNAME = "default"
 S3_BUCKET_AUDIO_OUTPUT = "pp-audio-output"
 S3_BUCKET_ACTIVITY_LOGS = "essence-activity-logs"
+S3_BUCKET_ESSENCE_AUDIO = "essence.news"
 MAX_WAIT_TIME = 300
 SLEEP_TIME_IN_SEC = 3
 # These are regex patterns that could be used to do selective matches.

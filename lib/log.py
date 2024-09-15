@@ -3,17 +3,26 @@ import logging, sys
 def setup_logger():
     """Set up and return a logger with the given name."""
     logger = logging.getLogger("PP_BACKEND")
-    logger.setLevel(logging.INFO)
+    
+    # Only set up the logger if it hasn't been set up before
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
 
-    # Create a stream handler that outputs to sys.stdout
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
+        # Create a stream handler that outputs to sys.stdout
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
 
-    # Create a formatter and set it for the handler
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
+        # Create a formatter and set it for the handler
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
 
-    # Add the handler to the logger
-    logger.addHandler(handler)
+        # Add the handler to the logger
+        logger.addHandler(handler)
+
+        # Prevent the logger from propagating messages to the root logger
+        logger.propagate = False
 
     return logger
+
+# Create a single instance of the logger
+logger = setup_logger()

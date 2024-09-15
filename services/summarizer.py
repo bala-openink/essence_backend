@@ -7,10 +7,10 @@ from openai import OpenAI
 
 from services import audio_processor
 from services import util
-from lib import db, log
+from lib import db
+from lib.log import logger
 import config
 
-logger = log.setup_logger()
 
 client = OpenAI(
     # This is the default and can be omitted
@@ -110,6 +110,9 @@ def inference(user_id, id, clean_url, transcript, include_audio, item):
         audio_file_url, audio_file_local = audio_processor.text_to_audio_polly(id, item["text_summary"])
         item["audio_summary_url"] = audio_file_url
 
+    time_saved = util.compute_time_saved(transcript, item["text_summary"])
+    item["time_saved"] = time_saved
+
     db.get_summary_table().addOrUpdate(item)
 
     if audio_file_url:
@@ -117,11 +120,13 @@ def inference(user_id, id, clean_url, transcript, include_audio, item):
         if audio_url_public:
             item["audio_url"] = audio_url_public
     
+    
     return json.dumps(strip_for_transport(item))
 
 def gpt(text, instructions):
     return gpt_with_openai(text, instructions)
 
+# TODO use util/llm_util.py instead of this
 def gpt_with_openai(text, instructions, model="gpt-3.5-turbo", temperature=0.5, max_tokens=4000):
     response = client.chat.completions.create(
         messages=[

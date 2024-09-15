@@ -13,6 +13,10 @@ openai = "^1.14.3"
 gTTS = "^2.5.1"
 serverless-wsgi = "^3.0.3"
 boto3 = "1.29.*"
+beautifulsoup4 = "^4.12.3"
+pydub = "^0.25.1"
+python-dotenv = "^1.0.1"
+google-cloud-texttospeech = "^2.17.1"
 
 
 [build-system]

@@ -1,0 +1,6 @@
+node_modules
+.dontcommit
+.venv
+.vscode
+*.zip
+__pycache__/

@@ -7,16 +7,19 @@ from urllib.parse import urlparse, urlunparse, quote
 from flask import make_response, jsonify, Response
 import re
 import requests
+from bs4 import BeautifulSoup
+from io import BytesIO
 
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
 
 import config
-from lib import log
+from lib.log import logger
+from models import AudioStoryRequest
 
-logger = log.setup_logger()
 stage = os.environ.get("STAGE", "dev")
 
+s3_client = boto3.client("s3")
 
 # Logic to check whether it is worth the effort in summarizing this transcript
 #  check if the text is in English and is it a valid article
@@ -57,10 +60,9 @@ def log_user_activity(user_id, article_id, article_url, activity="READ", comment
 
 
 def append_logs_to_s3(item, bucket_name, key):
-    s3 = boto3.client("s3")
     json_data = json.dumps(item)
     # Appending the stage to folder path
-    s3.put_object(
+    s3_client.put_object(
         Bucket=bucket_name, Key=f"{stage}/{key}", Body=json_data.encode("utf-8")
     )
 
@@ -73,7 +75,6 @@ def is_non_empty_array(obj):
 # utility to upload to s3. Index is needed only for storing the chunks to remember the insertion order for sorting
 def upload_to_s3(file_path, bucket_name, s3_key, index=0):
     try:
-        s3_client = boto3.client("s3")
         s3_client.upload_file(file_path, bucket_name, f"{stage}/{s3_key}")
         url = f"s3://{bucket_name}/{stage}/{s3_key}"
         print(f"File {file_path} uploaded to {url}")
@@ -90,7 +91,6 @@ def download_from_s3(s3_url):
     file_key = "/".join(s3_url.split("/")[3:])
 
     # Create a new S3 client
-    s3 = boto3.client("s3")
 
     # Generate a local filename
     local_filename = f"/tmp/{file_key.split('/')[-1]}"
@@ -99,7 +99,7 @@ def download_from_s3(s3_url):
         f"Downloading the file, {local_filename} from s3 bucket, {bucket_name} and path {file_key}"
     )
     # Download the file from S3
-    s3.download_file(bucket_name, file_key, local_filename)
+    s3_client.download_file(bucket_name, file_key, local_filename)
     return local_filename
 
 
@@ -160,7 +160,6 @@ def generate_presigned_url(bucket_name, object_key, expiration=3600):
     Returns:
     - str: A presigned URL to access the S3 object.
     """
-    s3_client = boto3.client("s3")
     presigned_url = s3_client.generate_presigned_url(
         "get_object",
         Params={"Bucket": bucket_name, "Key": object_key},
@@ -185,6 +184,24 @@ def generate_audio_url_public(file_source):
             return None
     else:
         return None
+
+
+def extract_transcript(url):
+    try:
+        # Send an HTTP GET request to the URL
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        
+        # Parse the HTML content using BeautifulSoup
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Extract and return the text content of the webpage
+        return soup.get_text()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching the webpage: {e}")
+        return None
+
+
 
 
 def build_response(id, item):
@@ -215,7 +232,8 @@ def build_response(id, item):
             **({"key_topics": item["key_topics"]} if "key_topics" in item else {}),
             **({"text_summary": item["text_summary"]} if "text_summary" in item else {}),
             **({"summary_bullets": item["summary_bullets"]} if "summary_bullets" in item else {}),
-            **({"time_saved": item["time_saved"]} if "time_saved" in item else {}),
+            **({"tweet": item["tweet"]} if "tweet" in item else {}),
+            **({"time_saved": int(item["time_saved"])} if "time_saved" in item else {}),
             "clean_url": item["url"],
         }
 
@@ -262,8 +280,22 @@ def count_words(text):
 
 
 def compute_time_saved(transcript, summary):
-    transcript_word_count = count_words(transcript) - 400
+    transcript_word_count = count_words(transcript) - 250
     summary_word_count = count_words(summary)
     time_transcript = round(transcript_word_count / 150)
     time_summary = round(summary_word_count / 150)
     return time_transcript - time_summary
+
+def upload_audio_to_s3(request: AudioStoryRequest, object: BytesIO):
+    # Upload the file to S3
+    s3_key = f"{stage}/{request.id}/{request.language}-{request.region}-{request.two_speakers}.mp3"  # Define the S3 object key
+    try:
+        s3_client.upload_fileobj(object, config.S3_BUCKET_ESSENCE_AUDIO, s3_key, ExtraArgs={'ContentType': 'audio/mpeg'})
+    except NoCredentialsError:
+        logger.error("AWS credentials not available.")
+        return jsonify({"detail": "AWS credentials not available."}), 500
+
+    # Generate the S3 file URL
+    s3_url = f"s3://{config.S3_BUCKET_ESSENCE_AUDIO}/{s3_key}"  
+    logger.info(f"Uploaded audio to S3: {s3_url}")
+    return s3_url  
