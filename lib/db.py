@@ -63,6 +63,35 @@ def create_table(dynamodb, table_name):
     print(f"Table {table_name} created successfully.")
     return table  # Return the newly created table object.
 
+def create_user_table(dynamodb, table_name):
+    table = dynamodb.create_table(
+        TableName=table_name,
+        KeySchema=[
+            {'AttributeName': 'id', 'KeyType': 'HASH'},  # Partition key
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'id', 'AttributeType': 'S'},
+            {'AttributeName': 'email', 'AttributeType': 'S'},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                'IndexName': 'EmailIndex',
+                'KeySchema': [
+                    {'AttributeName': 'email', 'KeyType': 'HASH'},
+                ],
+                'Projection': {'ProjectionType': 'ALL'},
+                'ProvisionedThroughput': {
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
+                }
+            }
+        ],
+        ProvisionedThroughput={'ReadCapacityUnits': 10, 'WriteCapacityUnits': 10}
+    )
+    table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+    print(f"Table {table_name} created successfully.")
+    return table
+
 # Creates and provide the Singleton instance of the DB impl for ARTICLE table, 
 # with a GSI on processing_status and date_published
 def create_article_table(dynamodb, table_name):
@@ -124,7 +153,7 @@ def get_user_table():
 
         if table is None:
             print(f"Table {user_table_name} does not exist. Creating table...")
-            table = create_table(dynamodb, user_table_name)
+            table = create_user_table(dynamodb, user_table_name)
 
         _USER_TABLE = DynamoDBImpl(table)
     return _USER_TABLE
@@ -282,9 +311,9 @@ class DynamoDBImpl(DB):
         if start_date and end_date:
             key_condition &= Key('date_published').between(start_date, end_date)
         elif start_date:
-            key_condition &= Key('date_published').gte(start_date)
+            key_condition &= Key('date_published').gt(start_date)
         elif end_date:
-            key_condition &= Key('date_published').lte(end_date)
+            key_condition &= Key('date_published').lt(end_date)
 
         query_params = {
             'IndexName': 'ProcessingStatusDateIndex',
@@ -298,3 +327,12 @@ class DynamoDBImpl(DB):
 
         response = self._table.query(**query_params)
         return response['Items']
+
+    def get_user_by_email(self, email):
+        response = self._table.query(
+            IndexName='EmailIndex',
+            KeyConditionExpression=Key('email').eq(email)
+        )
+        items = response.get('Items', [])
+        return items[0] if items else None
+

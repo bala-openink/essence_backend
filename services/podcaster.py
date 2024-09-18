@@ -13,7 +13,7 @@ from pydub import AudioSegment
 from openai import OpenAI
 from google.cloud import texttospeech
 
-from services import util
+from services import utilities
 from models import AudioStoryRequest
 from lib.log import logger
 
@@ -21,7 +21,7 @@ load_dotenv()
 
 client = OpenAI(
     # This is the default and can be omitted
-    api_key=util.get_secret("OPENAI_API_KEY")
+    api_key=utilities.get_secret("OPENAI_API_KEY")
 )
 
 # os.environ["PATH"] += os.pathsep + os.path.join(os.getcwd(), "bin")
@@ -90,20 +90,71 @@ def generate_audio_story(request: AudioStoryRequest):
         cache[request_hash] = final_audio
         return final_audio    
 
-def generate_intro_audio(userName: str = "there", twoSpeakers: bool = "false"):
-    segments = []
-    if twoSpeakers:
-        welcome_message = f"Hi {userName} - Good morning. Welcome to ESSENCE - Your personalised news podcast, presented by Harry and Emily.  Let's dive into the 'essence of today's top stories --- made just for you."
-        hello_message_male = "... Good morning Emily"
-        hello_message_female = "... Good morning Harry... lets get started !!!"
-        segments.append(generate_audio("male", welcome_message))
-        segments.append(generate_audio("male", hello_message_male))
-        segments.append(generate_audio("female", hello_message_female))
-        intro_segment = merge_audio_segments(segments)
-
+def generate_intro_audio(userName='there', isFirstTimeEver=False, isFirstTimeToday=False, timeOfDay='day', twoSpeakers=True):
+    # Determine the greeting based on time of day
+    if timeOfDay.lower() == 'morning':
+        greeting = "Good morning"
+        context = "I hope your day is off to a great start."
+        dive_in = "Let's kick off your morning with today's top stories."
+    elif timeOfDay.lower() == 'afternoon':
+        greeting = "Good afternoon"
+        context = "I hope your day is going well so far."
+        dive_in = "Let's catch you up on the latest news for your afternoon."
+    elif timeOfDay.lower() == 'evening':
+        greeting = "Good evening"
+        context = "I hope you've had a productive day."
+        dive_in = "Let's wrap up your day with the most important stories."
     else:
-        welcome_message = f"Hi {userName} - Good morning. Welcome to ESSENCE - Your personalised news podcast, presented by Harry.  Let's dive into the 'essence of today's top stories --- made just for you."
-        intro_segment = generate_audio("male", welcome_message)
+        greeting = "Hello"
+        context = "I hope you're having a great day."
+        dive_in = "Let's dive into the top stories."
+
+    welcome_message_first = ""
+    welcome_message_second = ""
+    
+    # Create the welcome message
+    if isFirstTimeEver:
+        two_speaker_intro = "We're Harry and Emily, your news presenters...."
+        speaker_intro = "I'm Harry... your news presenter...."
+
+        welcome_message_first = (
+            f"{greeting}, {userName}! Welcome to ESSENCE - your personalized news podcast. "
+            "We're excited to have you here. "
+        )
+
+        welcome_message_second = (
+            f"{two_speaker_intro}" if twoSpeakers else f"{speaker_intro}"
+            f"{context} {dive_in}"
+        )
+    elif isFirstTimeToday:
+        two_speaker_intro = "As always, I'm Emily, joined by Harry...."
+        speaker_intro = "Its Harry again..."
+
+        welcome_message_first = (
+            f"{greeting}, {userName}! Welcome back to ESSENCE. "
+        )
+
+        welcome_message_second = (
+            f"{two_speaker_intro}" if twoSpeakers else f"{speaker_intro}"
+            f"{context} {dive_in}"
+        )
+    else:
+        welcome_message_first = (
+            f"{greeting}, {userName}! Welcome back to ESSENCE. "
+        )
+        welcome_message_second = (
+            f"{context} Let's continue with the latest stories."
+        )
+
+    # Generate the audio
+    if twoSpeakers:
+        male_intro = f"{welcome_message_first}"
+        female_intro = f"{welcome_message_second}"
+        male_segment = generate_audio("male", male_intro)
+        female_segment = generate_audio("female", female_intro)
+        intro_segment = merge_audio_segments([male_segment, female_segment])
+    else:
+        intro_segment = generate_audio("male", f"{welcome_message_first} {welcome_message_second}")
 
     intro_segment = add_bg_for_intro(intro_segment)
     return intro_segment
@@ -251,7 +302,7 @@ def merge_audio_segments(audio_segments):
 def add_bg(audio: AudioSegment):
     background_music = AudioSegment.from_file("resources/music/bg2.mp3")
     # Set volume levels (in dB)
-    conversation_background_volume = -20  # Reduced volume during conversation
+    conversation_background_volume = -25  # Reduced volume during conversation
 
     # Adjust the volume of the background music for different segments
     background_conversation = background_music + conversation_background_volume
@@ -267,10 +318,10 @@ def add_bg(audio: AudioSegment):
 def add_bg_for_intro(audio: AudioSegment):
     duration_ms = len(audio)
 
-    background_music = AudioSegment.from_file("resources/music/intro_bg.mp3")
+    background_music = AudioSegment.from_file("resources/music/bg2.mp3")
     # Set volume levels (in dB)
     intro_outro_volume = -10  # Original volume
-    conversation_background_volume = -20  # Reduced volume during conversation
+    conversation_background_volume = -25  # Reduced volume during conversation
 
     # Adjust the volume of the background music for different segments
     background_intro = background_music[:2000] + intro_outro_volume

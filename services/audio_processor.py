@@ -5,7 +5,7 @@ import os
 import boto3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from services import util
+from services import utilities
 import config
 
 # def text_to_audio_fb(video_id, text):
@@ -41,7 +41,7 @@ def text_to_audio_gtts(id, text):
     tts.save(file_path)
 
     folder_by_day = time.strftime("%Y-%m-%d", time.localtime()) # One folder per day
-    index, url = util.upload_to_s3(file_path, config.S3_BUCKET_AUDIO_OUTPUT, f"{folder_by_day}/{id}/summary/{summary_audio_file}")
+    index, url = utilities.upload_to_s3(file_path, config.S3_BUCKET_AUDIO_OUTPUT, f"{folder_by_day}/{id}/summary/{summary_audio_file}")
     return url, file_path
 
 def text_to_audio_polly(id, text):
@@ -59,5 +59,5 @@ def text_to_audio_polly(id, text):
     file.close()
 
     folder_by_day = time.strftime("%Y-%m-%d", time.localtime()) # One folder per day
-    index, url = util.upload_to_s3(file_path, config.S3_BUCKET_AUDIO_OUTPUT, f"{folder_by_day}/{id}/summary/{summary_audio_file}")
+    index, url = utilities.upload_to_s3(file_path, config.S3_BUCKET_AUDIO_OUTPUT, f"{folder_by_day}/{id}/summary/{summary_audio_file}")
     return url, file_path

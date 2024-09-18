@@ -8,7 +8,7 @@ from dateutil import parser as date_parser
 import hashlib  # Add this import at the top
 from flask import jsonify
 
-from services.util import extract_transcript, upload_audio_to_s3
+from services.utilities import extract_transcript, upload_audiostory_to_s3
 from util.llm_util import summarize_text_and_extract_categories
 from lib import db
 from lib.log import logger
@@ -112,34 +112,18 @@ def get_or_create_article(article_id, item, source_name, category):
             return existing_article
         
         # Handle date_published
-        date_published = item.get('date_published')
-        current_time = datetime.datetime.now(datetime.timezone.utc)
+        date_published = parse_and_format_date(item.get('date_published'))
         
-        # If date_published is not available, use the current time
-        if date_published:
-            try:
-                # Parse the date_published string into a datetime object
-                parsed_date = date_parser.parse(date_published)
-                if not parsed_date.tzinfo:
-                    parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
-                if _is_older_than_few_years(parsed_date):
-                    date_published = current_time
-                else:
-                    date_published = parsed_date
-            except ValueError:
-                # If parsing fails, use the current time    
-                date_published = current_time
-        else:
-            date_published = current_time
-        
-        formatted_date = date_published.isoformat()
+        # Update date_published to current time if it's too old
+        if _is_older_than_few_years(date_published):
+            date_published = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
         new_article = {
             'id': article_id,
             'title': item.get('title'),
             'url': item.get('url'),
             'image': item.get('image'),
-            'date_published': formatted_date,
+            'date_published': date_published,
             'rss_summary': item.get('content_text'),
             'source_name': source_name,
             'type': category,
@@ -152,9 +136,36 @@ def get_or_create_article(article_id, item, source_name, category):
         logger.error(f"Error in get_or_create_article: {str(e)}")
         raise
 
-def _is_older_than_few_years(date, years=3):
-    current_date = datetime.datetime.now(datetime.timezone.utc)
-    return (current_date - date).days > (years * 365)
+def parse_and_format_date(date_string):
+    if not date_string:
+        return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    
+    try:
+        # Parse the date_string into a datetime object
+        parsed_date = date_parser.parse(date_string)
+        
+        # If the parsed date doesn't have timezone info, assume it's UTC
+        if not parsed_date.tzinfo:
+            parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
+        
+        # Convert to UTC if it's not already
+        utc_date = parsed_date.astimezone(datetime.timezone.utc)
+        
+        # Format as ISO 8601 string
+        return utc_date.isoformat()
+    except ValueError:
+        # If parsing fails, use the current UTC time
+        logger.warning(f"Failed to parse date: {date_string}. Using current UTC time.")
+        return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+def _is_older_than_few_years(date_string, years=10):
+    try:
+        date = datetime.datetime.fromisoformat(date_string)
+        current_date = datetime.datetime.now(datetime.timezone.utc)
+        return (current_date - date).days > (years * 365)
+    except ValueError:
+        logger.error(f"Invalid date format: {date_string}")
+        return False
 
 def extract_and_save_transcript(article):
     try:
@@ -214,7 +225,7 @@ def generate_and_save_audio_summary(article):
         output = BytesIO()
         audio_summary.export(output, format="mp3")
 
-        s3_url = upload_audio_to_s3(audio_request, output)
+        s3_url = upload_audiostory_to_s3(audio_request, output)
         
         article['audio_summary'] = s3_url
         article['processing_status'] = 'audio_summary_generated'

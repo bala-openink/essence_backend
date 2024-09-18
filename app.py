@@ -9,7 +9,10 @@ import uuid
 import serverless_wsgi
 import traceback
 
-from services import util, summarizer, podcaster, feed_reader, user_news
+from services import summarizer, podcaster, feed_reader, user_news, utilities
+from routes.user_routes import user_bp
+from routes.test_routes import test_bp
+from routes.public_routes import public_bp
 from lib import db
 from lib.log import logger
 
@@ -19,6 +22,10 @@ app = Flask(__name__)
 
 localMode = True
 
+# Register the user Blueprint
+app.register_blueprint(user_bp, url_prefix='/user')
+app.register_blueprint(test_bp, url_prefix='/test')
+app.register_blueprint(public_bp, url_prefix='/public')
 
 @app.route("/")
 def home():
@@ -58,12 +65,12 @@ def stream():
     }
 
     # ID is a hash of the clean url after removing query params
-    clean_url = util.clean_url(url)
+    clean_url = utilities.clean_url(url)
     # TODO P1 - Audio should be generated in the background and be responded in an async way
     # TODO P2 - Stream the response back in a continuous way, using websocket like approach
     # Unique id for the article is generated to cache in the DB. When ID changes, new summary is performed. Hence the importance of Id
     # TODO THINK - Do we want to include instructions and include_audio in the ID ?
-    id = util.generate_id(url, instructions, include_audio)
+    id = utilities.generate_id(url, instructions, include_audio)
     # check if this article exists in the db, and return the object
     item = None
     if is_test is None:
@@ -72,17 +79,17 @@ def stream():
         if item and item["text_summary"]:
             logger.info(f"article {id} found in the DB. Returning")
             # Log that this user has requested for this article
-            util.log_user_activity(user_id, id, clean_url)
-            return Response(util.build_response(id, item), headers=headers)
+            utilities.log_user_activity(user_id, id, clean_url)
+            return Response(utilities.build_response(id, item), headers=headers)
 
     # If summary url is not present, continue processing again
     # check if its worth the effort
-    isWorth = util.is_worth(id, clean_url)
+    isWorth = utilities.is_worth(id, clean_url)
 
     if isWorth:
         logger.info(f"Article {id} doesn't exist and its worth. Going to summarize")
         try:
-            util.log_user_activity(user_id, id, clean_url, "CREATE")
+            utilities.log_user_activity(user_id, id, clean_url, "CREATE")
             return Response(summarizer.process_in_stream(user_id, id, clean_url, transcript, instructions, include_audio, item), headers=headers)
         except Exception as e:
             traceback.print_exc()
@@ -125,26 +132,25 @@ def summarize():
     # TODO - handle CORS cleanly while building response here
     # Set headers for the response
     headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no"  # Disable buffering for Nginx
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache"
     }
 
     # Get transcript if not provided in the request
     if not transcript or len(str(transcript)) < 100:
-        transcript = util.extract_transcript(url)
+        transcript = utilities.extract_transcript(url)
     
     if len(str(transcript)) < 100:
         raise BadRequest("Transcript could not be extracted. URL might be incorrect")
 
 
     # ID is a hash of the clean url after removing query params
-    clean_url = util.clean_url(url)
+    clean_url = utilities.clean_url(url)
     # TODO P1 - Audio should be generated in the background and be responded in an async way
     # TODO P2 - Stream the response back in a continuous way, using websocket like approach
     # Unique id for the article is generated to cache in the DB. When ID changes, new summary is performed. Hence the importance of Id
     # TODO THINK - Do we want to include instructions and include_audio in the ID ?
-    id = util.generate_id(url)
+    id = utilities.generate_id(url)
     # check if this article exists in the db, and return the object
     item = None
     if is_test is None:
@@ -153,17 +159,17 @@ def summarize():
         if item and item.get("text_summary"):
             logger.info(f"article {id} found in the DB. Returning")
             # Log that this user has requested for this article
-            util.log_user_activity(user_id, id, clean_url)
-            return Response(util.build_response(id, item), headers=headers)
+            utilities.log_user_activity(user_id, id, clean_url)
+            return Response(utilities.build_response(id, item), headers=headers)
 
     # If summary url is not present, continue processing again
     # check if its worth the effort
-    isWorth = util.is_worth(id, clean_url)
+    isWorth = utilities.is_worth(id, clean_url)
 
     if isWorth:
         logger.info(f"Article {id} doesn't exist and its worth. Going to summarize")
         try:
-            util.log_user_activity(user_id, id, clean_url, "CREATE")
+            utilities.log_user_activity(user_id, id, clean_url, "CREATE")
             return Response(summarizer.text_summary(user_id, id, clean_url, transcript, item), headers=headers)
         except Exception as e:
             traceback.print_exc()
@@ -210,18 +216,17 @@ def inference():
     # TODO - handle CORS cleanly while building response here
     # Set headers for the response
     headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no"  # Disable buffering for Nginx
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache"
     }
 
     # ID is a hash of the clean url after removing query params
-    clean_url = util.clean_url(url)
+    clean_url = utilities.clean_url(url)
     # TODO P1 - Audio should be generated in the background and be responded in an async way
     # TODO P2 - Stream the response back in a continuous way, using websocket like approach
     # Unique id for the article is generated to cache in the DB. When ID changes, new summary is performed. Hence the importance of Id
     # TODO THINK - Do we want to include instructions and include_audio in the ID ?
-    id = util.generate_id(url)
+    id = utilities.generate_id(url)
     # check if this article exists in the db, and return the object
     item = None
     if is_test is None:
@@ -230,16 +235,16 @@ def inference():
 
         if item and item.get("audio_summary_url"):
             logger.info(f"article {id} found in the DB. Returning")
-            return Response(util.build_response(id, item), headers=headers)
+            return Response(utilities.build_response(id, item), headers=headers)
 
     # If summary url is not present, continue processing again
     # check if its worth the effort
-    isWorth = util.is_worth(id, clean_url)
+    isWorth = utilities.is_worth(id, clean_url)
 
     if isWorth:
         logger.info(f"Article {id} doesn't exist and its worth. Going to do inference")
         try:
-            util.log_user_activity(user_id, id, clean_url, "CREATE")
+            utilities.log_user_activity(user_id, id, clean_url, "CREATE")
             return Response(summarizer.inference(user_id, id, clean_url, transcript, include_audio, item), headers=headers)
         except Exception as e:
             traceback.print_exc()
@@ -278,7 +283,7 @@ def audio_story():
         output = BytesIO()
         final_audio.export(output, format="mp3")
 
-        s3_url = util.upload_audio_to_s3(audio_story_request, output)
+        s3_url = utilities.upload_audiostory_to_s3(audio_story_request, output)
 
         elapsed_time = time.time() - start_time  # Calculate elapsed time
         logger.info(f"audio_story::: Time taken: {elapsed_time:.4f} seconds")
@@ -296,10 +301,19 @@ def intro_audio():
     try:
         # Get query parameters with default values
         user_name = request.args.get('user_name', default='there')
+        is_first_time_ever = request.args.get('is_first_time_ever', default='false').lower() == 'true'
+        is_first_time_today = request.args.get('is_first_time_today', default='false').lower() == 'true'
+        time_of_day = request.args.get('time_of_day', default='day')
         two_speakers = request.args.get('two_speakers', default='true').lower() == 'true'
 
-        # Generate intro audio using the implementation function
-        intro_segment = podcaster.generate_intro_audio(userName=user_name, twoSpeakers=two_speakers)
+        # Generate intro audio using the updated implementation function
+        intro_segment = podcaster.generate_intro_audio(
+            userName=user_name,
+            isFirstTimeEver=is_first_time_ever,
+            isFirstTimeToday=is_first_time_today,
+            timeOfDay=time_of_day,
+            twoSpeakers=two_speakers
+        )
 
         # Export the audio to a BytesIO object
         intro_audio = BytesIO()
@@ -355,86 +369,6 @@ def parse_all_feeds():
     return feed_reader.start_feed_processing()
 
 
-##################################################################################
-# ######## USER FACING ENDPOINTS #######################################################
-##################################################################################
-
-@app.route('/latest_news', methods=['GET'])
-def latest_news():
-    logger.info("latest_news route")
-    try:
-        user_id = request.args.get('user_id')
-        categories = request.args.getlist('category')
-        limit = int(request.args.get('limit', 10))
-
-        if not user_id:
-            raise BadRequest("user_id is required")
-
-        articles = user_news.get_latest_news(user_id, categories, limit)
-
-        return jsonify({
-            "count": len(articles),
-            "articles": articles
-        }), 200
-
-    except Exception as e:
-        logger.error(f"Error fetching latest news: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-
-##################################################################################
-# ######## TESTING ENDPOINTS #####################################################
-##################################################################################
-
-@app.route('/test/articles', methods=['GET'])
-def test_articles():
-    request_id = str(uuid.uuid4())
-    logger.info(f"test_articles route - Request ID: {request_id}")
-    try:
-        # Get optional parameters
-        limit = request.args.get('limit', default=None, type=int)
-        all_attributes = request.args.get('all_attributes', default='false').lower() == 'true'
-
-        table = db.get_article_table()
-        items = table.list()
-
-        # Extract desired fields
-        results = []
-        for item in items:
-            if all_attributes:
-                result = item.copy()
-                if 'full_text' in result:
-                    # Trim full_text to 50 words
-                    result['full_text'] = ' '.join(result['full_text'].split()[:50]) + '...'
-            else:
-                result = {
-                    'id': item.get('id'),
-                    'title': item.get('title'),
-                    'url': item.get('url'),
-                    'processing_status': item.get('processing_status'),
-                    'date_published': item.get('date_published')
-                }
-            results.append(result)
-
-        # Apply limit if specified
-        if limit is not None:
-            results = results[:limit]
-
-        list_size = len(results)
-        logger.info(f"Fetched {list_size} articles from DynamoDB - Request ID: {request_id}")
-        
-        # Include the list size in the response
-        response = {
-            'count': list_size,
-            'articles': results
-        }
-        
-        return jsonify(response), 200
-
-    except Exception as e:
-        logger.error(f"Error fetching articles: {str(e)} - Request ID: {request_id}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-    
 
 def handler(event, context):
     # TODO - Check how to pass the headers from API gateway when required.

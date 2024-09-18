@@ -6,7 +6,7 @@ import json
 from openai import OpenAI
 
 from services import audio_processor
-from services import util
+from services import utilities
 from lib import db
 from lib.log import logger
 import config
@@ -14,7 +14,7 @@ import config
 
 client = OpenAI(
     # This is the default and can be omitted
-    api_key=util.get_secret("OPENAI_API_KEY")
+    api_key=utilities.get_secret("OPENAI_API_KEY")
 )
 
 # Convenience method to remove unnecessary fields before responding to client
@@ -58,7 +58,7 @@ def process_in_stream(user_id, id, clean_url, transcript, instructions, include_
         audio_file_url, audio_file_local = audio_processor.text_to_audio_polly(id, summary_para)
         item["audio_summary_url"] = audio_file_url
         db.get_summary_table().addOrUpdate(item)
-        audio_url_public = util.generate_audio_url_public(audio_file_url)
+        audio_url_public = utilities.generate_audio_url_public(audio_file_url)
         if audio_url_public:
             item["audio_url"] = audio_url_public
             yield json.dumps(strip_for_transport(item)) + "\n\n";
@@ -99,7 +99,7 @@ def inference(user_id, id, clean_url, transcript, include_audio, item):
     try:
         inference_json = json.loads(inference)
         # Adding the shortened URL to the tweet response from GPT
-        inference_json["tweet"] = inference_json["tweet"] + " - " + util.shorten_url(clean_url)
+        inference_json["tweet"] = inference_json["tweet"] + " - " + utilities.shorten_url(clean_url)
         item.update(inference_json)
     except json.JSONDecodeError:
         print("Error: Invalid JSON response from OpenAI API.")
@@ -108,15 +108,19 @@ def inference(user_id, id, clean_url, transcript, include_audio, item):
     audio_file_url = None
     if include_audio and item.get("text_summary"):
         audio_file_url, audio_file_local = audio_processor.text_to_audio_polly(id, item["text_summary"])
+        print(f"Audio file URL: {audio_file_url}")
         item["audio_summary_url"] = audio_file_url
 
-    time_saved = util.compute_time_saved(transcript, item["text_summary"])
-    item["time_saved"] = time_saved
+    try:
+        time_saved = utilities.compute_time_saved(transcript, item["text_summary"])
+        item["time_saved"] = time_saved
+    except Exception as e:
+        print(f"Error: could not compute time saved.")
 
     db.get_summary_table().addOrUpdate(item)
 
     if audio_file_url:
-        audio_url_public = util.generate_audio_url_public(audio_file_url)
+        audio_url_public = utilities.generate_audio_url_public(audio_file_url)
         if audio_url_public:
             item["audio_url"] = audio_url_public
     

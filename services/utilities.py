@@ -1,3 +1,5 @@
+import datetime
+from threading import Thread
 import os
 import hashlib
 import time
@@ -174,6 +176,7 @@ def generate_audio_url_public(file_source):
             try:
                 # Assuming parse_s3_url is defined elsewhere to extract bucket and key
                 bucket_name, object_key = parse_s3_url(file_source)
+                # logger.info(f"Generating presigned URL for {bucket_name} and {object_key}")
                 return generate_presigned_url(bucket_name, object_key)
             except Exception as e:
                 print(f"Error generating S3 presigned URL: {e}")
@@ -243,7 +246,7 @@ def build_response(id, item):
         return json.dumps(error_response)
 
 # Utility to retrieve the secrets like credentials, etc from AWS secret manager
-def get_secret(secret_name="OPENAI_API_KEY"):
+def get_secret(secret_name="OPENAI_API_KEY", default_value=None):
     region_name = "us-west-1"
 
     # Create a Secrets Manager client
@@ -251,24 +254,26 @@ def get_secret(secret_name="OPENAI_API_KEY"):
     client = session.client(service_name="secretsmanager", region_name=region_name)
 
     # Retrieve the secret value
+    secret = None
     try:
         response = client.get_secret_value(SecretId=secret_name)
-    except ClientError as e:
-        # For a list of exceptions thrown, see
-        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-        raise e
+        # Extract the secret value
+        if "SecretString" in response:
+            secret = response["SecretString"]
+        else:
+            # Handle binary secrets
+            secret = response["SecretBinary"]
 
-    # Extract the secret value
-    if "SecretString" in response:
-        secret = response["SecretString"]
-    else:
-        # Handle binary secrets
-        secret = response["SecretBinary"]
+    except ClientError as e:
+        logger.error(f"Error retrieving secret from AWS Secret manager.. {secret_name}: {e}")
 
     # Return the secret. Secret is stored as a key-value pair.
     # We are using the convention to have the key same as the secret name for simplicity.
-    secret_dict = json.loads(secret)
-    return secret_dict[secret_name]
+    if secret:
+        secret_dict = json.loads(secret)
+        return secret_dict[secret_name]
+    else:
+        return os.environ.get(secret_name, default_value)
 
 
 def count_words(text):
@@ -286,7 +291,7 @@ def compute_time_saved(transcript, summary):
     time_summary = round(summary_word_count / 150)
     return time_transcript - time_summary
 
-def upload_audio_to_s3(request: AudioStoryRequest, object: BytesIO):
+def upload_audiostory_to_s3(request: AudioStoryRequest, object: BytesIO):
     # Upload the file to S3
     s3_key = f"{stage}/{request.id}/{request.language}-{request.region}-{request.two_speakers}.mp3"  # Define the S3 object key
     try:
@@ -299,3 +304,35 @@ def upload_audio_to_s3(request: AudioStoryRequest, object: BytesIO):
     s3_url = f"s3://{config.S3_BUCKET_ESSENCE_AUDIO}/{s3_key}"  
     logger.info(f"Uploaded audio to S3: {s3_url}")
     return s3_url  
+
+def upload_audio_to_s3(key, object: BytesIO):
+    # Upload the file to S3
+    s3_key = f"{stage}/{key}.mp3"  # Define the S3 object key
+    try:
+        s3_client.upload_fileobj(object, config.S3_BUCKET_ESSENCE_AUDIO, s3_key, ExtraArgs={'ContentType': 'audio/mpeg'})
+    except NoCredentialsError:
+        logger.error("AWS credentials not available.")
+        return jsonify({"detail": "AWS credentials not available."}), 500
+
+    # Generate the S3 file URL
+    s3_url = f"s3://{config.S3_BUCKET_ESSENCE_AUDIO}/{s3_key}"  
+    logger.info(f"Uploaded audio to S3: {s3_url}")
+    return s3_url  
+
+def get_time_of_day(current_time):
+    try:
+        if current_time:
+            current_time = datetime.fromisoformat(current_time)
+        if current_time.hour < 12:
+            return "morning"
+        elif 12 <= current_time.hour < 17:
+            return "afternoon"
+        else:
+            return "evening"
+    except Exception as e:
+        logger.error(f"Error getting time of day: {e}")
+        return "day"
+
+def background_task(func, *args, **kwargs):
+    thread = Thread(target=func, args=args, kwargs=kwargs)
+    thread.start()

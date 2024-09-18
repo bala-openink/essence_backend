@@ -1,13 +1,13 @@
 import os
 from openai import OpenAI
 import json
-from services import util
+from services import utilities
 from lib.log import logger
 
 
 client = OpenAI(
     # This is the default and can be omitted
-    api_key=util.get_secret("OPENAI_API_KEY")
+    api_key=utilities.get_secret("OPENAI_API_KEY")
 )
 
 def summarize_text_and_extract_categories(text):
