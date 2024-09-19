@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, make_response, Response, stream_with_context
+from flask_cors import CORS
 from werkzeug.exceptions import BadRequest
 from flask import Flask, request, send_file, jsonify
 from pydub import AudioSegment
@@ -20,12 +21,19 @@ from models import AudioStoryRequest
 
 app = Flask(__name__)
 
+# Configure CORS
+CORS(app, resources={r"/*": {"origins": ["http://localhost:3000"]}})
+# Enable CORS for all routes in this blueprint
+CORS(user_bp, resources={r"/*": {"origins": "*"}})
+CORS(public_bp, resources={r"/*": {"origins": "*"}})
+
 localMode = True
 
 # Register the user Blueprint
 app.register_blueprint(user_bp, url_prefix='/user')
 app.register_blueprint(test_bp, url_prefix='/test')
 app.register_blueprint(public_bp, url_prefix='/public')
+
 
 @app.route("/")
 def home():

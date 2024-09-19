@@ -322,7 +322,7 @@ def upload_audio_to_s3(key, object: BytesIO):
 def get_time_of_day(current_time):
     try:
         if current_time:
-            current_time = datetime.fromisoformat(current_time)
+            current_time = datetime.datetime.fromisoformat(current_time)
         if current_time.hour < 12:
             return "morning"
         elif 12 <= current_time.hour < 17:

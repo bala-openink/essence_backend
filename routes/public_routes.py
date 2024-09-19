@@ -41,8 +41,8 @@ def latest_news(user):
         limit = int(request.args.get('limit', 10))
 
         # Get first_time_ever, first_time_today, current_time from request
-        first_time_ever = request.args.get('first_time_ever', False)
-        first_time_today = request.args.get('first_time_today', False)
+        first_time_ever = request.args.get('first_time_ever', 'false').lower() == 'true'
+        first_time_today = request.args.get('first_time_today', 'false').lower() == 'true'
         current_time = request.args.get('current_time', None)
 
         # Based on current_time, identify if its morning, afternoon, evening or night
@@ -50,7 +50,9 @@ def latest_news(user):
 
         # fetch the intro_audio_url from user table, based on first_time_ever, first_time_today, time_of_day
         intro_audios = user.get('intro_audio_urls', None)
+        logger.info(f"intro_audios: {intro_audios}")
         key = f"{first_time_ever}_{first_time_today}_{time_of_day}"
+        logger.info(f"key: {key}")
         intro_audio_url = intro_audios.get(key, None)
 
 

@@ -61,10 +61,14 @@ def signin():
             }
             user_table.add(user)
 
+            # Trigger background task to generate intro audio files
+            utilities.background_task(generate_intro_audio_files, user['first_name'], user['id'])
+
+
         logger.info(f"Sending the verification code: {verification_code}")
         # TODO: Integrate email service 
         # send_verification_email(email, verification_code)
-        return jsonify({"message": "Verification code sent to email"}), 202
+        return jsonify({"isNewUser": True, "message": "Verification code sent to email"}), 202
 
 @user_bp.route('/verify', methods=['POST'])
 def verify():
@@ -139,45 +143,47 @@ def generate_intro_audio_files(user_name, user_id):
         if not user:
             raise BadRequest("User not found")
 
-        combinations = [
-            {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "morning"},
+        # If user doesn't have intro_audio_urls, generate them
+        if not user.get('intro_audio_urls'):
+            combinations = [
+                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "morning"},
             {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "afternoon"},
-            {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "evening"},
-            {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "day"},
-            {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "morning"},
-            {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "afternoon"},
-            {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "evening"},
-            {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "day"},
-            {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "morning"},
-            {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "afternoon"},
-            {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "evening"},
-            {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "day"},
-        ]
+                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "evening"},
+                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "day"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "morning"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "afternoon"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "evening"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "day"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "morning"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "afternoon"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "evening"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "day"},
+            ]
 
-        audio_urls = {}
+            audio_urls = {}
 
-        for combo in combinations:
-            intro_segment = podcaster.generate_intro_audio(
-                userName=user_name,
-                isFirstTimeEver=combo["is_first_time_ever"],
-                isFirstTimeToday=combo["is_first_time_today"],
-                timeOfDay=combo["time_of_day"],
-                twoSpeakers=True
-            )
+            for combo in combinations:
+                intro_segment = podcaster.generate_intro_audio(
+                    userName=user_name,
+                    isFirstTimeEver=combo["is_first_time_ever"],
+                    isFirstTimeToday=combo["is_first_time_today"],
+                    timeOfDay=combo["time_of_day"],
+                    twoSpeakers=True
+                )
 
-            intro_audio = BytesIO()
-            intro_segment.export(intro_audio, format="mp3")
-            intro_audio.seek(0)
+                intro_audio = BytesIO()
+                intro_segment.export(intro_audio, format="mp3")
+                intro_audio.seek(0)
 
-            key = f"{combo['is_first_time_ever']}_{combo['is_first_time_today']}_{combo['time_of_day']}"
-            s3_key = f"{user_id}/intro/{key}"
-            s3_url = utilities.upload_audio_to_s3(s3_key, intro_audio)
-            audio_urls[key] = s3_url
-            logger.info(f"Created intro audio file for {s3_key} and uploaded to {s3_url}")
+                key = f"{combo['is_first_time_ever']}_{combo['is_first_time_today']}_{combo['time_of_day']}"
+                s3_key = f"{user_id}/intro/{key}"
+                s3_url = utilities.upload_audio_to_s3(s3_key, intro_audio)
+                audio_urls[key] = s3_url
+                logger.info(f"Created intro audio file for {s3_key} and uploaded to {s3_url}")
 
-        # Update the user table with the audio URLs
-        user["intro_audio_urls"] = audio_urls
-        db.get_user_table().addOrUpdate(user)
+            # Update the user table with the audio URLs
+            user["intro_audio_urls"] = audio_urls
+            db.get_user_table().addOrUpdate(user)
 
     except Exception as e:
         logger.error(f"Error generating intro audio files: {str(e)}", exc_info=True)
