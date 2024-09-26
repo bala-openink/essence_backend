@@ -18,7 +18,7 @@ BLACKLIST_URLS = [
 ]
 # Not sure if this is needed here. No one is using it anyway for now
 # JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-secret-key')
-# JWT_ALGORITHM = 'HS256'
 # JWT_EXPIRATION_DELTA = 3600  # 1 hour
 # AWS_REGION = os.environ.get('AWS_REGION', 'us-west-1')
 # SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'your-verified-email@example.com')
+SKIP_EXPENSIVE_OPERATIONS = os.environ.get('SKIP_EXPENSIVE_OPERATIONS', 'false').lower() == 'true'

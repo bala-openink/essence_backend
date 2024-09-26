@@ -7,8 +7,9 @@ import datetime  # Add this import at the top
 from dateutil import parser as date_parser
 import hashlib  # Add this import at the top
 from flask import jsonify
+from config import SKIP_EXPENSIVE_OPERATIONS
 
-from services.utilities import extract_transcript, upload_audiostory_to_s3
+from services.utilities import extract_transcript, upload_audiostory_to_s3, background_task
 from util.llm_util import summarize_text_and_extract_categories
 from lib import db
 from lib.log import logger
@@ -19,8 +20,7 @@ from pydub import AudioSegment
 
 # Start the feed processing in a separate thread
 def start_feed_processing():
-    thread = threading.Thread(target=parse_feeds)
-    thread.start()
+    background_task(parse_feeds)
     return jsonify({"message": "Feed processing started"}), 202
 
 
@@ -85,22 +85,27 @@ def process_feed_item(item, source_name, category):
     except Exception as e:
         logger.error(f"Error extracting transcript for article {article_id}: {str(e)}")
         return
+    
+    if not SKIP_EXPENSIVE_OPERATIONS:
+        try:
+            if article['processing_status'] == 'transcript_extracted':
+                summarize_and_save(article)
+        except Exception as e:
+            logger.error(f"Error summarizing article {article_id}: {str(e)}")
+            return
 
-    try:
-        if article['processing_status'] == 'transcript_extracted':
-            summarize_and_save(article)
-    except Exception as e:
-        logger.error(f"Error summarizing article {article_id}: {str(e)}")
-        return
+        try:
+            if article['processing_status'] == 'summaries_extracted':
+                generate_and_save_audio_summary(article)
+        except Exception as e:
+            logger.error(f"Error generating audio summary for article {article_id}: {str(e)}")
+            return
+    else:
+        logger.info(f"Skipping expensive operations for article {article_id}")
+        article['processing_status'] = 'skipped_expensive_operations'
+        db.get_article_table().addOrUpdate(article)
 
-    try:
-        if article['processing_status'] == 'summaries_extracted':
-            generate_and_save_audio_summary(article)
-    except Exception as e:
-        logger.error(f"Error generating audio summary for article {article_id}: {str(e)}")
-        return
-
-    logger.info(f"Successfully processed article {article_id}")
+    logger.info(f"Processed article {article_id}")
 
 def get_or_create_article(article_id, item, source_name, category):
     try:
@@ -216,7 +221,7 @@ def generate_and_save_audio_summary(article):
             language="en",
             region="UK",
             two_speakers=True,
-            add_background=True,
+            add_background=False,
             user_name=None
         )
         audio_summary = podcaster.generate_audio_story(audio_request)

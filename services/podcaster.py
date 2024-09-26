@@ -5,9 +5,9 @@ from io import BytesIO
 from typing import List, Dict, Optional
 import random
 import subprocess
+import boto3
 
 from werkzeug.exceptions import BadRequest
-from dotenv import load_dotenv
 
 from pydub import AudioSegment
 from openai import OpenAI
@@ -16,15 +16,13 @@ from google.cloud import texttospeech
 from services import utilities
 from models import AudioStoryRequest
 from lib.log import logger
+from lib import db
 
-load_dotenv()
 
 client = OpenAI(
     # This is the default and can be omitted
     api_key=utilities.get_secret("OPENAI_API_KEY")
 )
-
-# os.environ["PATH"] += os.pathsep + os.path.join(os.getcwd(), "bin")
 
 # Dictionary containing the transition messages
 category_transitions = {
@@ -175,7 +173,7 @@ def get_random_transition(categoryName):
 
 # TODO: Support for different lengths - short & long forms
 def generate_conversation(text_summary: str, length: str, language: str, region: str, two_speakers: bool, user_name: str):
-    word_count = 70 if length == "short" else 500
+    word_count = 40 if length == "short" else 500
 
     single_speaker_prompt = (
         "Convert the following news summary into a podcast segment that feels like part of an ongoing monologue delivered by one speaker, Harry. "
@@ -336,3 +334,66 @@ def add_bg_for_intro(audio: AudioSegment):
 
     logger.info("Added background music successfully...")
     return podcast_audio
+
+
+def generate_intro_audio_files(user_name, user_id):
+    logger.info(f"Generating intro audio files for user {user_id}")
+    try:
+        user_table = db.get_user_table()
+        user = user_table.get(user_id)
+        if not user:
+            raise BadRequest("User not found")
+
+        # If user doesn't have intro_audio_urls or only the first intro audio is generated, generate them again
+        if not user.get('intro_audio_urls') or len(user.get('intro_audio_urls', [])) < 2:
+            combinations = [
+                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "morning"},
+                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "afternoon"},
+                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "evening"},
+                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "day"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "morning"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "afternoon"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "evening"},
+                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "day"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "morning"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "afternoon"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "evening"},
+                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "day"},
+            ]
+
+            audio_urls = {}
+            first_audio_created = False
+
+            for combo in combinations:
+                intro_segment = generate_intro_audio(
+                    userName=user_name,
+                    isFirstTimeEver=combo["is_first_time_ever"],
+                    isFirstTimeToday=combo["is_first_time_today"],
+                    timeOfDay=combo["time_of_day"],
+                    twoSpeakers=True
+                )
+
+                intro_audio = BytesIO()
+                intro_segment.export(intro_audio, format="mp3")
+                intro_audio.seek(0)
+
+                key = f"{combo['is_first_time_ever']}_{combo['is_first_time_today']}_{combo['time_of_day']}"
+                s3_key = f"{user_id}/intro/{key}"
+                s3_url = utilities.upload_audio_to_s3(s3_key, intro_audio)
+                audio_urls[key] = s3_url
+                logger.info(f"Created intro audio file for {s3_key} and uploaded to {s3_url}")
+
+                # Update the database after the first audio file is created
+                if not first_audio_created:
+                    user["intro_audio_urls"] = audio_urls
+                    db.get_user_table().addOrUpdate(user)
+                    first_audio_created = True
+                    logger.info(f"Updated user {user_id} with first intro audio URL")
+
+            # Update the user table with the audio URLs
+            user["intro_audio_urls"] = audio_urls
+            db.get_user_table().addOrUpdate(user)
+            logger.info(f"Updated user {user_id} with all intro audio URLs")
+
+    except Exception as e:
+        logger.error(f"Error generating intro audio files: {str(e)}", exc_info=True)

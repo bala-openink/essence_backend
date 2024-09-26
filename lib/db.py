@@ -336,3 +336,16 @@ class DynamoDBImpl(DB):
         items = response.get('Items', [])
         return items[0] if items else None
 
+    def query_articles(self, limit=None, processing_status='audio_summary_generated'):
+        query_params = {
+            'IndexName': 'ProcessingStatusDateIndex',
+            'KeyConditionExpression': Key('processing_status').eq(processing_status),
+            'ScanIndexForward': False,  # This will sort in descending order (newest first)
+        }
+
+        if limit is not None:
+            query_params['Limit'] = limit
+
+        response = self._table.query(**query_params)
+        return response['Items']
+

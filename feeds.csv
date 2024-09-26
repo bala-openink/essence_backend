@@ -1,4 +1,7 @@
 rss_type,source_name,category,feed_url
 rss.app,retaildive,retail,https://rss.app/feeds/v1.1/PkbMIFi1EnfhFqXy.json
 #rss.app,shopify,ecommerce,https://rss.app/feeds/v1.1/YVHrPZrHpZZd3BMd.json
-#rss.app,ecommercetimes,ecommerce,https://rss.app/feeds/v1.1/AHViWbq1oQOv0AB3.json
+rss.app,ecommercetimes,ecommerce,https://rss.app/feeds/v1.1/AHViWbq1oQOv0AB3.json
+rss.app,retailgazette,ecommerce,https://rss.app/feeds/v1.1/eKBCY3Towx4aBvuR.json
+rss.app,socialmediatoday,marketing,https://rss.app/feeds/v1.1/0xm5lMqxNXN5vzXh.json
+rss.app,ecommercenewsuk,ecommerce,https://rss.app/feeds/v1.1/HpgCcIykIBzWjbdA.json

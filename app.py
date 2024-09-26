@@ -1,3 +1,7 @@
+# This is done to load the environment variables from the .env file first thing before anyone uses it
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, request, jsonify, make_response, Response, stream_with_context
 from flask_cors import CORS
 from werkzeug.exceptions import BadRequest
@@ -6,6 +10,7 @@ from pydub import AudioSegment
 from io import BytesIO
 import time
 import uuid
+import json
 
 import serverless_wsgi
 import traceback
@@ -14,6 +19,7 @@ from services import summarizer, podcaster, feed_reader, user_news, utilities
 from routes.user_routes import user_bp
 from routes.test_routes import test_bp
 from routes.public_routes import public_bp
+
 from lib import db
 from lib.log import logger
 
@@ -21,11 +27,20 @@ from models import AudioStoryRequest
 
 app = Flask(__name__)
 
-# Configure CORS
-CORS(app, resources={r"/*": {"origins": ["http://localhost:3000"]}})
-# Enable CORS for all routes in this blueprint
-CORS(user_bp, resources={r"/*": {"origins": "*"}})
-CORS(public_bp, resources={r"/*": {"origins": "*"}})
+# Configure CORS to be completely permissive
+CORS(app, resources={r"/*": {
+    "origins": [
+        "http://localhost:3000",
+        "https://getessence.app",
+        "https://www.getessence.app",
+        "https://main.d1lkh6gn3xrn6w.amplifyapp.com"
+    ],
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+    "expose_headers": ["Content-Type", "Authorization"]
+}})
+
+
 
 localMode = True
 
@@ -376,10 +391,47 @@ def category_transition_audio():
 def parse_all_feeds():
     return feed_reader.start_feed_processing()
 
-
-
 def handler(event, context):
-    # TODO - Check how to pass the headers from API gateway when required.
+    # TODO - Improve this background task implementation. Maybe it should be in its own package
+    if event.get('background_task'):
+        # This is a background task
+        function_name = event['function_name']
+        args = event.get('args', [])
+        kwargs = event.get('kwargs', {})
+
+        logger.info(f"Running as a background task: {function_name} with args: {args} and kwargs: {kwargs}")
+
+        # Call the function dynamically from the correct module
+        if function_name == 'parse_feeds':
+            feed_reader.parse_feeds(*args, **kwargs)
+        elif function_name == 'generate_intro_audio_files':
+            podcaster.generate_intro_audio_files(*args, **kwargs)
+        elif function_name in globals():
+            globals()[function_name](*args, **kwargs)
+        else:
+            logger.error(f"Unknown function: {function_name}")
+            return {'statusCode': 400, 'body': json.dumps(f'Unknown function: {function_name}')}
+        
+        return {'statusCode': 200, 'body': json.dumps('Background task completed')}
+    
+    logger.info("Running as a normal API Gateway request")
+    # Normal API Gateway request
     if "headers" not in event:
         event["headers"] = {}
+    
     return serverless_wsgi.handle_request(app, event, context)
+    
+    # Ensure CORS headers are in the response
+    if 'headers' not in response:
+        response['headers'] = {}
+    
+    # Add CORS headers to the response
+    response['headers'].update({
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
+        'Access-Control-Allow-Methods': '*',
+        'Access-Control-Allow-Credentials': 'false'
+    })
+    
+    logger.info(f"Returning response: {response}")
+    return response

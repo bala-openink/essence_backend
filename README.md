@@ -19,7 +19,10 @@ To run locally,
 It runs on port 8000 by default (let it be)
 
 2. Run gunicorn server locally on port 4000 (not using docker for faster troubleshooting)
-> gunicorn -b 0.0.0.0:4000 app:app
+> gunicorn -b 0.0.0.0:4000 --workers 1  app:app
+
+To point to the local server via ngrok
+> ngrok http http://localhost:4000
 
 To deploy in AWS lambda
 
@@ -31,4 +34,4 @@ docker buildx build --no-cache --platform linux/amd64 -t ocs-backend --load .
 > serverless deploy
 
  - for deploying only the function, without docker or env changes. Use this, as its fast
-> serverless deploy --stage live -f app
+> serverless deploy function -f app --stage dev 

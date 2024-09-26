@@ -22,6 +22,7 @@ from models import AudioStoryRequest
 stage = os.environ.get("STAGE", "dev")
 
 s3_client = boto3.client("s3")
+lambda_client = boto3.client('lambda')
 
 # Logic to check whether it is worth the effort in summarizing this transcript
 #  check if the text is in English and is it a valid article
@@ -334,5 +335,25 @@ def get_time_of_day(current_time):
         return "day"
 
 def background_task(func, *args, **kwargs):
-    thread = Thread(target=func, args=args, kwargs=kwargs)
-    thread.start()
+    # Invokes the current lambda function as a background task, which is our app.py, and handler is the entry point.
+    if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+        logger.info("Running a background task inside AWS Lambda")
+        # We're running in Lambda
+        lambda_function_name = os.environ['AWS_LAMBDA_FUNCTION_NAME']
+        payload = {
+            'background_task': True,
+            'function_name': func.__name__,
+            'args': args,
+            'kwargs': kwargs
+        }
+        lambda_client.invoke(
+            FunctionName=lambda_function_name,
+            InvocationType='Event',  # This makes it asynchronous
+            Payload=json.dumps(payload)
+        )
+        logger.info(f"Invoked background task {func.__name__} with payload: {payload}")
+    else:
+        # We're running locally
+        logger.info("Running a background task locally")
+        thread = Thread(target=func, args=args, kwargs=kwargs)
+        thread.start()

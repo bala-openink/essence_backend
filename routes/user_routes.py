@@ -3,11 +3,12 @@ from flask import Blueprint, request, jsonify
 from werkzeug.exceptions import BadRequest
 from lib.log import logger
 from lib import db
-from lib.auth import generate_token, verify_token, send_verification_email, generate_verification_code
+from lib.auth import generate_token, verify_token, send_verification_email, generate_verification_code, revoke_token
 from lib.validators import validate_email, validate_country, validate_language
 import uuid
 
-from services import podcaster, utilities
+from services import utilities
+from services.podcaster import generate_intro_audio_files
 
 user_bp = Blueprint('user', __name__)
 
@@ -48,7 +49,8 @@ def signin():
     else:
         verification_code = generate_verification_code()
         if user:
-            user_table.update_user(user['id'], {'verification_code': verification_code})
+            user['verification_code'] = verification_code
+            user_table.addOrUpdate(user)
         else:
             user = {
                 'id': str(uuid.uuid4()),
@@ -67,10 +69,10 @@ def signin():
 
         logger.info(f"Sending the verification code: {verification_code}")
         # TODO: Integrate email service 
-        # send_verification_email(email, verification_code)
+        send_verification_email(email, verification_code)
         return jsonify({"isNewUser": True, "message": "Verification code sent to email"}), 202
 
-@user_bp.route('/verify', methods=['POST'])
+@user_bp.route('/verify', methods=['POST']) 
 def verify():
     logger.info("verify route")
     data = request.json
@@ -95,7 +97,7 @@ def verify():
         # Trigger background task to generate intro audio files
         utilities.background_task(generate_intro_audio_files, user['first_name'], user['id'])
 
-        return jsonify({"token": token, "message": "Email verified successfully"}), 200
+        return jsonify({"token": token, "firstName": user['first_name'], "message": "Email verified successfully"}), 200
     else:
         return jsonify({"message": "Invalid verification code"}), 400
 
@@ -135,55 +137,66 @@ def generate_intro_audio():
 
     return jsonify({"message": "Intro audio generation triggered"}), 202
 
-# Add more user-related routes as needed
-def generate_intro_audio_files(user_name, user_id):
-    try:
-        user_table = db.get_user_table()
-        user = user_table.get(user_id)
-        if not user:
-            raise BadRequest("User not found")
+@user_bp.route('/refresh_token', methods=['POST'])
+def refresh_token():
+    logger.info("refresh_token route")
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        raise BadRequest("Missing Authorization header")
 
-        # If user doesn't have intro_audio_urls, generate them
-        if not user.get('intro_audio_urls'):
-            combinations = [
-                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "morning"},
-            {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "afternoon"},
-                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "evening"},
-                {"is_first_time_ever": True, "is_first_time_today": True, "time_of_day": "day"},
-                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "morning"},
-                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "afternoon"},
-                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "evening"},
-                {"is_first_time_ever": False, "is_first_time_today": True, "time_of_day": "day"},
-                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "morning"},
-                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "afternoon"},
-                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "evening"},
-                {"is_first_time_ever": False, "is_first_time_today": False, "time_of_day": "day"},
-            ]
+    token = auth_header.split(' ')[1]
+    user_id = verify_token(token)
 
-            audio_urls = {}
+    if not user_id:
+        raise BadRequest("Invalid or expired token")
 
-            for combo in combinations:
-                intro_segment = podcaster.generate_intro_audio(
-                    userName=user_name,
-                    isFirstTimeEver=combo["is_first_time_ever"],
-                    isFirstTimeToday=combo["is_first_time_today"],
-                    timeOfDay=combo["time_of_day"],
-                    twoSpeakers=True
-                )
+    new_token = generate_token(user_id)
+    return jsonify({"token": new_token, "message": "Token refreshed successfully"}), 200
 
-                intro_audio = BytesIO()
-                intro_segment.export(intro_audio, format="mp3")
-                intro_audio.seek(0)
+@user_bp.route('/logout', methods=['POST'])
+def logout():
+    logger.info("logout route")
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        raise BadRequest("Missing Authorization header")
 
-                key = f"{combo['is_first_time_ever']}_{combo['is_first_time_today']}_{combo['time_of_day']}"
-                s3_key = f"{user_id}/intro/{key}"
-                s3_url = utilities.upload_audio_to_s3(s3_key, intro_audio)
-                audio_urls[key] = s3_url
-                logger.info(f"Created intro audio file for {s3_key} and uploaded to {s3_url}")
+    token = auth_header.split(' ')[1]
+    user_id = verify_token(token)
 
-            # Update the user table with the audio URLs
-            user["intro_audio_urls"] = audio_urls
-            db.get_user_table().addOrUpdate(user)
+    if not user_id:
+        raise BadRequest("Invalid or expired token")
 
-    except Exception as e:
-        logger.error(f"Error generating intro audio files: {str(e)}", exc_info=True)
+    revoke_token(token)
+    return jsonify({"message": "Logged out successfully"}), 200
+
+@user_bp.route('/logout_all', methods=['POST'])
+def logout_all():
+    logger.info("logout_all route")
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        raise BadRequest("Missing Authorization header")
+
+    token = auth_header.split(' ')[1]
+    user_id = verify_token(token)
+
+    if not user_id:
+        raise BadRequest("Invalid or expired token")
+
+    revoke_token(user_id, all_tokens=True)
+    return jsonify({"message": "Logged out from all devices successfully"}), 200
+
+@user_bp.route('/verify_token', methods=['POST'])
+def verify_token_endpoint():
+    logger.info("verify_token route")
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({"valid": False, "message": "Missing Authorization header"}), 401
+
+    token = auth_header.split(' ')[1]
+    user_id = verify_token(token)
+
+    if user_id:
+        return jsonify({"valid": True, "user_id": user_id, "message": "Token is valid"}), 200
+    else:
+        return jsonify({"valid": False, "message": "Invalid or expired token"}), 401
+

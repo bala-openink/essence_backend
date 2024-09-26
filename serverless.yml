@@ -6,7 +6,7 @@ provider:
   region: us-east-1
   stage: ${opt:stage, 'dev'}
   memorySize: 2048
-  timeout: 60  # Adjusted to 30 seconds to comply with HTTP API limits
+  timeout: 900  # Adjusted to 30 seconds to comply with HTTP API limits
   environment:
     STAGE: ${opt:stage, 'dev'}  # Moved under environment
 
@@ -19,7 +19,10 @@ provider:
   httpApi:
     cors:
       allowedOrigins:
-        - '*'
+        - http://localhost:3000
+        - https://getessence.app
+        - https://www.getessence.app
+        - https://main.d1lkh6gn3xrn6w.amplifyapp.com
       allowedHeaders:
         - Content-Type
         - Authorization
@@ -48,6 +51,17 @@ provider:
       Action:
         - secretsmanager:GetSecretValue
       Resource: "arn:aws:secretsmanager:us-west-1:322521590770:*"
+    # Add the following statement for Lambda self-invocation
+    - Effect: Allow
+      Action:
+        - lambda:InvokeFunction
+      Resource: "arn:aws:lambda:us-east-1:322521590770:function:${self:service}-${self:provider.stage}-app"
+    # Add the following statement for SES permissions
+    - Effect: Allow
+      Action:
+        - ses:SendEmail
+        - ses:SendRawEmail
+      Resource: "*"
 
 functions:
   app:

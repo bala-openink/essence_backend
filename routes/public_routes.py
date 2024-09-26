@@ -50,16 +50,18 @@ def latest_news(user):
 
         # fetch the intro_audio_url from user table, based on first_time_ever, first_time_today, time_of_day
         intro_audios = user.get('intro_audio_urls', None)
-        logger.info(f"intro_audios: {intro_audios}")
-        key = f"{first_time_ever}_{first_time_today}_{time_of_day}"
-        logger.info(f"key: {key}")
-        intro_audio_url = intro_audios.get(key, None)
+        intro_audio_url = None
+        if  intro_audios:
+            logger.info(f"intro_audios: {intro_audios}")
+            key = f"{first_time_ever}_{first_time_today}_{time_of_day}"
+            logger.info(f"key: {key}")
+            intro_audio_url = intro_audios.get(key, None)
 
 
         articles = user_news.get_latest_news(user['id'], categories, limit)
 
         return jsonify({
-            "intro_audio": utilities.generate_audio_url_public(intro_audio_url),
+            "intro_audio": utilities.generate_audio_url_public(intro_audio_url) if intro_audio_url else None,
             "articles": articles,
             "count": len(articles)
         }), 200
