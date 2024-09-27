@@ -34,6 +34,7 @@ def test_articles():
                     'id': item.get('id'),
                     'title': item.get('title'),
                     'url': item.get('url'),
+                    'categories': item.get('categories'),
                     'processing_status': item.get('processing_status'),
                     'date_published': item.get('date_published')
                 }

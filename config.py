@@ -22,3 +22,4 @@ BLACKLIST_URLS = [
 # AWS_REGION = os.environ.get('AWS_REGION', 'us-west-1')
 # SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'your-verified-email@example.com')
 SKIP_EXPENSIVE_OPERATIONS = os.environ.get('SKIP_EXPENSIVE_OPERATIONS', 'false').lower() == 'true'
+ADMIN_EMAIL = 'balaforfriends@gmail.com'

@@ -235,7 +235,7 @@ def generate_conversation(text_summary: str, length: str, language: str, region:
     )
 
     conversation = response.choices[0].message.content
-    logger.info(conversation)
+    logger.debug(conversation)  # Changed from info to debug
     
     try:
         # Convert the JSON response into a Python dictionary
@@ -260,7 +260,7 @@ def generate_audio_openai(speaker: str, text: str, language: str = "en"):
     
     # Load the audio into an AudioSegment for further processing
     audio_segment = AudioSegment.from_file(audio_content, format="mp3")
-    logger.info(f"Generated audio successfully for {speaker} : {text} ")
+    logger.debug(f"Generated audio successfully for {speaker} : {text} ")  # Changed from info to debug
     return audio_segment
 
 def generate_audio_google(speaker: str, text: str, language: str = "en"):
@@ -287,14 +287,14 @@ def generate_audio_google(speaker: str, text: str, language: str = "en"):
     
     # Load the audio into an AudioSegment for further processing
     audio_segment = AudioSegment.from_file(audio_content, format="mp3")
-    logger.info(f"Generated audio from google tts successfully for {speaker} : {text} ")
+    logger.debug(f"Generated audio from google tts successfully for {speaker} : {text} ")  # Changed from info to debug
     return audio_segment
 
 def merge_audio_segments(audio_segments):
     combined = AudioSegment.silent(duration=0)
     for segment in audio_segments:
         combined += segment
-    logger.info(f"merged succesfully {len(audio_segments)} segments")
+    logger.debug(f"merged succesfully {len(audio_segments)} segments")  # Changed from info to debug
     return combined
 
 def add_bg(audio: AudioSegment):
@@ -310,7 +310,7 @@ def add_bg(audio: AudioSegment):
     audio_with_bg_intro = one_second_bg + audio
     podcast_audio = audio_with_bg_intro.overlay(background_conversation)
 
-    logger.info("Added background music successfully...")
+    logger.debug("Added background music successfully...")  # Changed from info to debug
     return podcast_audio
 
 def add_bg_for_intro(audio: AudioSegment):
@@ -332,7 +332,7 @@ def add_bg_for_intro(audio: AudioSegment):
     podcast_audio = podcast_audio.overlay(background_conversation, position=2000)
     podcast_audio += background_outro
 
-    logger.info("Added background music successfully...")
+    logger.debug("Added background music successfully...")  # Changed from info to debug
     return podcast_audio
 
 

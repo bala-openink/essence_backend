@@ -391,7 +391,21 @@ def category_transition_audio():
 def parse_all_feeds():
     return feed_reader.start_feed_processing()
 
+def parse_feeds_scheduled(event, context):
+    logger.info("Scheduled parse_feeds job started")
+    result = feed_reader.start_feed_processing()
+    logger.info(f"Scheduled parse_feeds job completed with result: {result}")
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Scheduled parse_feeds job completed')
+    }
+
 def handler(event, context):
+    # Check if this is a scheduled event
+    if event.get('source') == 'aws.events':
+        logger.info("Running scheduled parse_feeds job")
+        return parse_feeds_scheduled(event, context)
+    
     # TODO - Improve this background task implementation. Maybe it should be in its own package
     if event.get('background_task'):
         # This is a background task
@@ -420,18 +434,3 @@ def handler(event, context):
         event["headers"] = {}
     
     return serverless_wsgi.handle_request(app, event, context)
-    
-    # Ensure CORS headers are in the response
-    if 'headers' not in response:
-        response['headers'] = {}
-    
-    # Add CORS headers to the response
-    response['headers'].update({
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '*',
-        'Access-Control-Allow-Methods': '*',
-        'Access-Control-Allow-Credentials': 'false'
-    })
-    
-    logger.info(f"Returning response: {response}")
-    return response

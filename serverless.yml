@@ -8,7 +8,8 @@ provider:
   memorySize: 2048
   timeout: 900  # Adjusted to 30 seconds to comply with HTTP API limits
   environment:
-    STAGE: ${opt:stage, 'dev'}  # Moved under environment
+    STAGE: ${opt:stage, 'dev'}
+    ENVIRONMENT: "production"
 
   ecr:
     images:
@@ -51,16 +52,20 @@ provider:
       Action:
         - secretsmanager:GetSecretValue
       Resource: "arn:aws:secretsmanager:us-west-1:322521590770:*"
-    # Add the following statement for Lambda self-invocation
     - Effect: Allow
       Action:
         - lambda:InvokeFunction
-      Resource: "arn:aws:lambda:us-east-1:322521590770:function:${self:service}-${self:provider.stage}-app"
-    # Add the following statement for SES permissions
+      Resource: "arn:aws:lambda:us-east-1:322521590770:function:${self:service}-${self:provider.stage}-*"
     - Effect: Allow
       Action:
         - ses:SendEmail
         - ses:SendRawEmail
+      Resource: "*"
+    # Add permission for CloudWatch Events
+    - Effect: Allow
+      Action:
+        - events:PutRule
+        - events:PutTargets
       Resource: "*"
 
 functions:
@@ -71,6 +76,16 @@ functions:
       - httpApi: 
           path: /{any+}
           method: '*' 
+    environment:
+      ENVIRONMENT: "production"
+      STAGE: ${opt:stage, 'dev'}
+
+  parseFeedsScheduled:
+    image:
+      name: ocsbackend
+    events:
+      - schedule: cron(0 6 * * ? *)  # Run at 6:00 AM UTC every day
+      - schedule: cron(0 15 * * ? *)  # Run at 2:30 PM UTC every day
     environment:
       ENVIRONMENT: "production"
       STAGE: ${opt:stage, 'dev'}

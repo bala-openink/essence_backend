@@ -5,6 +5,7 @@ import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
 from boto3.dynamodb.conditions import Key, Attr
+from lib.log import logger
 
 import config
 
@@ -13,9 +14,11 @@ _USER_TABLE = None
 _USER_ACTIVITY_TABLE = None
 _ARTICLE_TABLE = None
 _USER_LISTEN_HISTORY_TABLE = None
+_FEED_TABLE = None
 
 # Using environment variable to determine local or production deployment
-environment = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
+# environment = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
+environment = 'PRODUCTION'
 # Get the current stage from environment variables
 stage = os.environ.get('STAGE', 'dev')
 summary_table_name = "content_summary_" + stage
@@ -23,6 +26,7 @@ user_table_name = "user_" + stage
 user_activity_table_name = "user_activity_" + stage
 article_table_name = "article_" + stage
 user_listen_history_table_name = "user_listen_history_" + stage
+feed_table_name = "feed_" + stage
 
 def create_dynamodb_resource(local=False):
     if local:
@@ -42,8 +46,10 @@ def check_table_exists(dynamodb, table_name):
         return table  # The table exists, return the table object.
     except ClientError as e:
         if e.response['Error']['Code'] == "ResourceNotFoundException":
+            logger.error(f"Table {table_name} does not exist")
             return None  # The table does not exist, return None.
         else:
+            logger.error(f"Error checking table {table_name} existence: {e}")
             raise
 
 
@@ -60,7 +66,7 @@ def create_table(dynamodb, table_name):
     )
     # Wait until the table exists.
     table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-    print(f"Table {table_name} created successfully.")
+    logger.info(f"Table {table_name} created successfully.")
     return table  # Return the newly created table object.
 
 def create_user_table(dynamodb, table_name):
@@ -89,7 +95,7 @@ def create_user_table(dynamodb, table_name):
         ProvisionedThroughput={'ReadCapacityUnits': 10, 'WriteCapacityUnits': 10}
     )
     table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-    print(f"Table {table_name} created successfully.")
+    logger.info(f"Table {table_name} created successfully.")
     return table
 
 # Creates and provide the Singleton instance of the DB impl for ARTICLE table, 
@@ -122,7 +128,7 @@ def create_article_table(dynamodb, table_name):
         ProvisionedThroughput={'ReadCapacityUnits': 10, 'WriteCapacityUnits': 10}
     )
     table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-    print(f"Table {table_name} created successfully.")
+    logger.info(f"Table {table_name} created successfully.")
     return table
 
 # Creates and provide the Singleton instance of the DB impl for Summary table
@@ -135,7 +141,7 @@ def get_summary_table():
         table = check_table_exists(dynamodb, summary_table_name)
 
         if table is None:
-            print(f"Table {summary_table_name} does not exist. Creating table...")
+            logger.info(f"Table {summary_table_name} does not exist. Creating table...")
             table = create_table(dynamodb, summary_table_name)
 
         _SUMMARY_TABLE = DynamoDBImpl(table)
@@ -152,7 +158,7 @@ def get_user_table():
         table = check_table_exists(dynamodb, user_table_name)
 
         if table is None:
-            print(f"Table {user_table_name} does not exist. Creating table...")
+            logger.info(f"Table {user_table_name} does not exist. Creating table...")
             table = create_user_table(dynamodb, user_table_name)
 
         _USER_TABLE = DynamoDBImpl(table)
@@ -169,7 +175,7 @@ def get_user_activity_table():
         table = check_table_exists(dynamodb, user_activity_table_name)
 
         if table is None:
-            print(f"Table {user_activity_table_name} does not exist. Creating table...")
+            logger.info(f"Table {user_activity_table_name} does not exist. Creating table...")
             table = create_table(dynamodb, user_activity_table_name)
 
         _USER_ACTIVITY_TABLE = DynamoDBImpl(table)
@@ -185,7 +191,7 @@ def get_article_table():
         table = check_table_exists(dynamodb, article_table_name)    
 
         if table is None:
-            print(f"Table {article_table_name} does not exist. Creating table...")
+            logger.info(f"Table {article_table_name} does not exist. Creating table...")
             table = create_article_table(dynamodb, article_table_name)
 
         _ARTICLE_TABLE = DynamoDBImpl(table)
@@ -201,11 +207,56 @@ def get_user_listen_history_table():
         table = check_table_exists(dynamodb, user_listen_history_table_name)
 
         if table is None:
-            print(f"Table {user_listen_history_table_name} does not exist. Creating table...")
+            logger.info(f"Table {user_listen_history_table_name} does not exist. Creating table...")
             table = create_table(dynamodb, user_listen_history_table_name)
 
         _USER_LISTEN_HISTORY_TABLE = DynamoDBImpl(table)
     return _USER_LISTEN_HISTORY_TABLE
+
+# Creates and provide the Singleton instance of the DB impl for FEED table
+def create_feed_table(dynamodb, table_name):
+    table = dynamodb.create_table(
+        TableName=table_name,
+        KeySchema=[
+            {'AttributeName': 'id', 'KeyType': 'HASH'},  # Partition key
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'id', 'AttributeType': 'S'},
+            {'AttributeName': 'status', 'AttributeType': 'S'},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                'IndexName': 'StatusIndex',
+                'KeySchema': [
+                    {'AttributeName': 'status', 'KeyType': 'HASH'},
+                ],
+                'Projection': {'ProjectionType': 'ALL'},
+                'ProvisionedThroughput': {
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
+                }
+            }
+        ],
+        ProvisionedThroughput={'ReadCapacityUnits': 10, 'WriteCapacityUnits': 10}
+    )
+    table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+    logger.info(f"Table {table_name} created successfully.")
+    return table
+
+def get_feed_table():
+    global _FEED_TABLE
+    if _FEED_TABLE is None:
+        dynamodb = create_dynamodb_resource(local=(environment == 'LOCAL'))
+
+        # Try to get the table if it exists
+        table = check_table_exists(dynamodb, feed_table_name)
+
+        if table is None:
+            logger.info(f"Table {feed_table_name} does not exist. Creating table...")
+            table = create_feed_table(dynamodb, feed_table_name)
+
+        _FEED_TABLE = DynamoDBImpl(table)
+    return _FEED_TABLE
 
 # DB interface
 class DB(object):
@@ -238,9 +289,9 @@ class DynamoDBImpl(DB):
             else:
                 raise ValueError('Item empty')
         except ClientError as e:
-            print(f"Exception adding Item to DynamoDB {e}")
+            logger.error(f"Exception adding Item to DynamoDB {e}")
         except Exception as e:
-            print(f"Exception adding Item to DynamoDB {e}")
+            logger.error(f"Exception adding Item to DynamoDB {e}")
         return None
         
     # Returns the item if found. Returns None if not found
@@ -254,6 +305,15 @@ class DynamoDBImpl(DB):
             return response['Item']
         else:
             return None
+
+    # Query the table with the provided kwargs
+    def query(self, **kwargs):
+        try:
+            response = self._table.query(**kwargs)
+            return response
+        except ClientError as e:
+            logger.error(f"Error querying DynamoDB: {e}")
+            raise
 
     # Returns True if succesfully deleted. Returns False on error 
     def delete(self, id):
@@ -348,4 +408,19 @@ class DynamoDBImpl(DB):
 
         response = self._table.query(**query_params)
         return response['Items']
+
+    def query_enabled_feeds(self):
+        response = self._table.query(
+            IndexName='StatusIndex',
+            KeyConditionExpression=Key('status').eq('enabled')
+        )
+        return response['Items']
+
+    def update_last_processed_date(self, feed_id, last_processed_date):
+        self._table.update_item(
+            Key={'id': feed_id},
+            UpdateExpression='SET last_processed_date = :date',
+            ExpressionAttributeValues={':date': last_processed_date}
+        )
+
 

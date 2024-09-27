@@ -7,7 +7,7 @@ import datetime  # Add this import at the top
 from dateutil import parser as date_parser
 import hashlib  # Add this import at the top
 from flask import jsonify
-from config import SKIP_EXPENSIVE_OPERATIONS
+from config import ADMIN_EMAIL, SKIP_EXPENSIVE_OPERATIONS
 
 from services.utilities import extract_transcript, upload_audiostory_to_s3, background_task
 from util.llm_util import summarize_text_and_extract_categories
@@ -16,96 +16,125 @@ from lib.log import logger
 from services import podcaster
 from models import AudioStoryRequest
 from pydub import AudioSegment
-
+from lib.email_service import send_email
+import traceback
 
 # Start the feed processing in a separate thread
 def start_feed_processing():
     background_task(parse_feeds)
     return jsonify({"message": "Feed processing started"}), 202
 
+# Remove the CSV reading part and replace it with this function
+def get_enabled_feeds():
+    feed_table = db.get_feed_table()
+    return feed_table.query_enabled_feeds()
 
 # TODO - Add handling for feeds that are not fully processed yet, got errored out in different stages
-# Entry point for parsing all the feeds. Parses the feeds in parallel
+# Update the parse_feeds function
 def parse_feeds():
     try:
-        with open('feeds.csv', 'r') as csvfile:
-            reader = csv.reader(csvfile)
-            next(reader)  # Skip the first line
-            feeds = [row for row in reader if not row[0].startswith('#')]
+        feeds = get_enabled_feeds()
+        total_articles = 0
+        total_skipped = 0
+        error_articles = []
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = []
-            for row in feeds:
-                rss_type, source_name, category, feed_url = row
-                futures.append(executor.submit(parse_feed, rss_type, source_name, category, feed_url))
+            for feed in feeds:
+                futures.append(executor.submit(parse_feed, feed))
             
             # Wait for all tasks to complete or timeout
             for future in futures:
                 try:
-                    future.result(timeout=300)  # 5 minutes timeout per feed
+                    result = future.result(timeout=300)  # 5 minutes timeout per feed
+                    total_articles += result['processed']
+                    total_skipped += result['skipped']
+                    error_articles.extend(result['errors'])
                 except TimeoutError:
                     logger.warning(f"Feed processing timed out for {future}")
                 except Exception as e:
                     logger.error(f"Error processing feed: {str(e)}")
 
-        logger.info("All feeds processed")
+        logger.info(f"All feeds processed. Total articles: {total_articles}, Skipped: {total_skipped}, Errors: {len(error_articles)}")
+        
+        # Send email with processing summary
+        send_processing_summary_email(total_articles, total_skipped, error_articles)
     except Exception as e:
         logger.error(f"Error in parse_feeds: {str(e)}")
 
-# Parses the feed based on the RSS type
-# TODO - Add parsing for other RSS types like feedspot, feed43, etc.
-def parse_feed(rss_type, source_name, category, feed_url):
+# Update the parse_feed function
+def parse_feed(feed):
+    rss_type = feed['rss_type']
+    source_name = feed['source_name']
+    category = feed['category']
+    feed_url = feed['feed_url']
+    feed_id = feed['id']
+
     if rss_type == 'rss.app':
-        parse_rss_app_feed(source_name, category, feed_url)
+        processed_count, skipped_count, errors = parse_rss_app_feed(source_name, category, feed_url)
     # Add other RSS types here as needed
+
+    # Update the last processed date
+    feed_table = db.get_feed_table()
+    feed_table.update_last_processed_date(feed_id, datetime.datetime.now(datetime.timezone.utc).isoformat())
+
+    return {'processed': processed_count, 'skipped': skipped_count, 'errors': errors}
 
 # Parses the feed from rss.app
 def parse_rss_app_feed(source_name, category, feed_url):
+    processed_count = 0
+    skipped_count = 0
+    errors = []
     response = requests.get(feed_url)
     if response.status_code == 200:
         feed_data = response.json()
-        logger.info("parse_rss_app_feed::feed_data: %s", feed_data)  # Changed to logger.info
+        logger.debug("parse_rss_app_feed::feed_data: %s", feed_data)
         items = feed_data.get('items', [])
         for item in items:
-            process_feed_item(item, source_name, category)
+            try:
+                result = process_feed_item(item, source_name, category)
+                if result == 'processed':
+                    processed_count += 1
+                elif result == 'skipped':
+                    skipped_count += 1
+            except Exception as e:
+                error_msg = f"Error processing item from {feed_url}: {str(e)}"
+                logger.error(error_msg)
+                errors.append({'url': item.get('url', 'Unknown URL'), 'error': error_msg})
     else:
-        logger.error("Failed to fetch feed from %s", feed_url)
+        error_msg = f"Failed to fetch feed from {feed_url}"
+        logger.error(error_msg)
+        errors.append({'url': feed_url, 'error': error_msg})
+    
+    return processed_count, skipped_count, errors
 
 def process_feed_item(item, source_name, category):
     try:
         article_id = hashlib.sha256(item.get('id', '').encode()).hexdigest()
         article = get_or_create_article(article_id, item, source_name, category)
     except Exception as e:
-        logger.error(f"Error creating/retrieving article: {str(e)}")
-        return
+        raise Exception(f"Error creating/retrieving article: {str(e)}")
 
-    try:
-        if article['processing_status'] == 'started':
-            extract_and_save_transcript(article)
-    except Exception as e:
-        logger.error(f"Error extracting transcript for article {article_id}: {str(e)}")
-        return
+    if article['processing_status'] == 'audio_summary_generated':
+        logger.info(f"Skipping already processed article {article_id}")
+        return 'skipped'
+
+    if article['processing_status'] == 'started':
+        extract_and_save_transcript(article)
     
     if not SKIP_EXPENSIVE_OPERATIONS:
-        try:
-            if article['processing_status'] == 'transcript_extracted':
-                summarize_and_save(article)
-        except Exception as e:
-            logger.error(f"Error summarizing article {article_id}: {str(e)}")
-            return
+        if article['processing_status'] == 'transcript_extracted':
+            summarize_and_save(article)
 
-        try:
-            if article['processing_status'] == 'summaries_extracted':
-                generate_and_save_audio_summary(article)
-        except Exception as e:
-            logger.error(f"Error generating audio summary for article {article_id}: {str(e)}")
-            return
+        if article['processing_status'] == 'summaries_extracted':
+            generate_and_save_audio_summary(article)
     else:
         logger.info(f"Skipping expensive operations for article {article_id}")
         article['processing_status'] = 'skipped_expensive_operations'
         db.get_article_table().addOrUpdate(article)
 
     logger.info(f"Processed article {article_id}")
+    return 'processed'
 
 def get_or_create_article(article_id, item, source_name, category):
     try:
@@ -240,4 +269,20 @@ def generate_and_save_audio_summary(article):
         logger.error(f"Error in generate_and_save_audio_summary: {str(e)}")
         db.get_article_table().addOrUpdate(article)
         raise
+
+def send_processing_summary_email(total_articles, total_skipped, error_articles):
+    subject = "Essence Feed Processing Summary"
+    body = f"""
+Feed processing completed.
+
+Total articles processed: {total_articles}
+Total articles skipped: {total_skipped}
+Total articles with errors: {len(error_articles)}
+
+Articles with errors:
+"""
+    for article in error_articles:
+        body += f"- URL: {article['url']}\n  Error: {article['error']}\n"
+
+    send_email(ADMIN_EMAIL, subject, body)
 

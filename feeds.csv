@@ -1,7 +1,12 @@
 rss_type,source_name,category,feed_url
+rss.app,ecommercenewsuk,ecommerce,https://rss.app/feeds/v1.1/HpgCcIykIBzWjbdA.json
+rss.app,ecommercegermany,ecommerce,https://rss.app/feeds/v1.1/w0pUwDzpTHXMo5JQ.json
+rss.app,businessoffashion,ecommerce,https://rss.app/feeds/v1.1/CEiivw1v59JQrsY5.json
+rss.app,ecommercebytes,ecommerce,https://rss.app/feeds/v1.1/vi0FlIY5sF2BJ6lz.json
+rss.app,thegrocer.co.uk,ecommerce,https://rss.app/feeds/v1.1/IVNn1efQ89vjRqIU.json
+rss.app,grocerydive,ecommerce,https://rss.app/feeds/v1.1/JLb51NM5iSr5yun1.json
 rss.app,retaildive,retail,https://rss.app/feeds/v1.1/PkbMIFi1EnfhFqXy.json
-#rss.app,shopify,ecommerce,https://rss.app/feeds/v1.1/YVHrPZrHpZZd3BMd.json
 rss.app,ecommercetimes,ecommerce,https://rss.app/feeds/v1.1/AHViWbq1oQOv0AB3.json
 rss.app,retailgazette,ecommerce,https://rss.app/feeds/v1.1/eKBCY3Towx4aBvuR.json
-rss.app,socialmediatoday,marketing,https://rss.app/feeds/v1.1/0xm5lMqxNXN5vzXh.json
-rss.app,ecommercenewsuk,ecommerce,https://rss.app/feeds/v1.1/HpgCcIykIBzWjbdA.json
+#rss.app,socialmediatoday,marketing,https://rss.app/feeds/v1.1/0xm5lMqxNXN5vzXh.json
+#rss.app,shopify,ecommerce,https://rss.app/feeds/v1.1/YVHrPZrHpZZd3BMd.json

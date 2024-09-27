@@ -35,9 +35,9 @@ def jwt_required(f):
 @public_bp.route('/latest_news', methods=['GET'])
 @jwt_required
 def latest_news(user):
-    logger.info("latest_news route")
+    logger.info(f"latest_news route for user: {user['id']}")
     try:
-        categories = request.args.getlist('category')
+        categories = request.args.getlist('categories')
         limit = int(request.args.get('limit', 10))
 
         # Get first_time_ever, first_time_today, current_time from request
@@ -47,6 +47,10 @@ def latest_news(user):
 
         # Based on current_time, identify if its morning, afternoon, evening or night
         time_of_day = utilities.get_time_of_day(current_time)
+
+        #If categories is empty, fetch it from user table
+        if not categories:
+            categories = user.get('categories', None)
 
         # fetch the intro_audio_url from user table, based on first_time_ever, first_time_today, time_of_day
         intro_audios = user.get('intro_audio_urls', None)
