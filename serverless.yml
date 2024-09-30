@@ -89,4 +89,5 @@ functions:
     environment:
       ENVIRONMENT: "production"
       STAGE: ${opt:stage, 'dev'}
+    maximumRetryAttempts: 0  # Set to 0 to disable retries for asynchronous invocations
 

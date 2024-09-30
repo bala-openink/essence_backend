@@ -2,6 +2,11 @@ from flask import Blueprint, request, jsonify
 from lib.log import logger
 from lib import db
 import uuid
+from services import utilities
+from util import llm_util
+from services import feed_reader
+from services import podcaster
+from services.feed_reader import AudioStoryRequest
 
 test_bp = Blueprint('test', __name__)
 
@@ -119,3 +124,37 @@ def delete_user(user_id):
     except Exception as e:
         logger.error(f"Error deleting user: {str(e)} - Request ID: {request_id}, User ID: {user_id}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
+@test_bp.route('/extract_transcript', methods=['GET'])
+def extract_transcript():
+    url = request.args.get('url')
+    if not url:
+        return jsonify({'error': 'URL parameter is required'}), 400
+    
+    transcript = utilities.extract_transcript(url)
+    if not transcript:
+        return jsonify({'error': 'Failed to extract transcript'}), 500
+
+    article = {
+        'id': 'test',
+        'url': url,
+        'full_text': transcript
+    }
+    summaries_and_categories = llm_util.summarize_text_and_extract_categories(transcript)
+    article['summary_50'] = summaries_and_categories.get('summary_50')
+    article['summary_200'] = summaries_and_categories.get('summary_200')
+    article['categories'] = summaries_and_categories.get('categories')
+
+    audio_request = AudioStoryRequest(
+        id=article['id'],
+        text_summary=article['summary_200'],
+        url=article['url'],
+        length="short",
+        language="en",
+        region="UK",
+        two_speakers=True,
+        add_background=False,
+        user_name=None
+    )
+    audio_summary = podcaster.generate_audio_story(audio_request) 
+    return jsonify({'transcript': transcript, 'audio_summary': audio_summary}), 200

@@ -77,6 +77,12 @@
         "LogGroupName": "/aws/lambda/ocs-backend-dev-app"
       }
     },
+    "ParseFeedsScheduledLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/ocs-backend-dev-parseFeedsScheduled"
+      }
+    },
     "IamRoleLambdaExecution": {
       "Type": "AWS::IAM::Role",
       "Properties": {
@@ -162,6 +168,29 @@
                     "secretsmanager:GetSecretValue"
                   ],
                   "Resource": "arn:aws:secretsmanager:us-west-1:322521590770:*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "lambda:InvokeFunction"
+                  ],
+                  "Resource": "arn:aws:lambda:us-east-1:322521590770:function:ocs-backend-dev-*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ses:SendEmail",
+                    "ses:SendRawEmail"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "events:PutRule",
+                    "events:PutTargets"
+                  ],
+                  "Resource": "*"
                 }
               ]
             }
@@ -187,12 +216,12 @@
       "Type": "AWS::Lambda::Function",
       "Properties": {
         "Code": {
-          "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:b2d05660680b83992a0c3b496bc3a67bbb011b54b5171b24b6887f93e8859072"
+          "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
         },
         "PackageType": "Image",
         "FunctionName": "ocs-backend-dev-app",
         "MemorySize": 2048,
-        "Timeout": 60,
+        "Timeout": 900,
         "Environment": {
           "Variables": {
             "STAGE": "dev",
@@ -210,14 +239,125 @@
         "AppLogGroup"
       ]
     },
-    "AppLambdaVersionnB2pZ1oVqmKFOqLsmPeqEHxOjEKrtKXZtQeyJGJJxk": {
+    "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "AppLambdaFunction"
         },
-        "CodeSha256": "b2d05660680b83992a0c3b496bc3a67bbb011b54b5171b24b6887f93e8859072"
+        "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+      }
+    },
+    "ParseFeedsScheduledLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+        },
+        "PackageType": "Image",
+        "FunctionName": "ocs-backend-dev-parseFeedsScheduled",
+        "MemorySize": 2048,
+        "Timeout": 900,
+        "Environment": {
+          "Variables": {
+            "STAGE": "dev",
+            "ENVIRONMENT": "production"
+          }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "IamRoleLambdaExecution",
+            "Arn"
+          ]
+        }
+      },
+      "DependsOn": [
+        "ParseFeedsScheduledLogGroup"
+      ]
+    },
+    "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY": {
+      "Type": "AWS::Lambda::Version",
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "ParseFeedsScheduledLambdaFunction"
+        },
+        "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+      }
+    },
+    "ParseFeedsScheduledEventsRuleSchedule1": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "cron(0 6 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "ParseFeedsScheduledLambdaFunction",
+                "Arn"
+              ]
+            },
+            "Id": "parseFeedsScheduledSchedule"
+          }
+        ]
+      }
+    },
+    "ParseFeedsScheduledLambdaPermissionEventsRuleSchedule1": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "ParseFeedsScheduledLambdaFunction",
+            "Arn"
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "ParseFeedsScheduledEventsRuleSchedule1",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "ParseFeedsScheduledEventsRuleSchedule2": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "cron(0 15 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "ParseFeedsScheduledLambdaFunction",
+                "Arn"
+              ]
+            },
+            "Id": "parseFeedsScheduledSchedule"
+          }
+        ]
+      }
+    },
+    "ParseFeedsScheduledLambdaPermissionEventsRuleSchedule2": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "ParseFeedsScheduledLambdaFunction",
+            "Arn"
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "ParseFeedsScheduledEventsRuleSchedule2",
+            "Arn"
+          ]
+        }
       }
     },
     "HttpApi": {
@@ -238,7 +378,10 @@
             "DELETE"
           ],
           "AllowOrigins": [
-            "*"
+            "http://localhost:3000",
+            "https://getessence.app",
+            "https://www.getessence.app",
+            "https://main.d1lkh6gn3xrn6w.amplifyapp.com"
           ]
         }
       }
@@ -344,10 +487,19 @@
     "AppLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "AppLambdaVersionnB2pZ1oVqmKFOqLsmPeqEHxOjEKrtKXZtQeyJGJJxk"
+        "Ref": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
       },
       "Export": {
         "Name": "sls-ocs-backend-dev-AppLambdaFunctionQualifiedArn"
+      }
+    },
+    "ParseFeedsScheduledLambdaFunctionQualifiedArn": {
+      "Description": "Current Lambda function version",
+      "Value": {
+        "Ref": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+      },
+      "Export": {
+        "Name": "sls-ocs-backend-dev-ParseFeedsScheduledLambdaFunctionQualifiedArn"
       }
     },
     "HttpApiId": {

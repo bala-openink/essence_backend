@@ -30,8 +30,9 @@ app = Flask(__name__)
 # Configure CORS to be completely permissive
 CORS(app, resources={r"/*": {
     "origins": [
-        "http://localhost:3000",
         "https://getessence.app",
+        "http://localhost:3000",
+        "http://192.168.2.197:3000",
         "https://www.getessence.app",
         "https://main.d1lkh6gn3xrn6w.amplifyapp.com"
     ],
