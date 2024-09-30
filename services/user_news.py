@@ -15,20 +15,20 @@ def get_latest_news(user_id: str, categories: Optional[List[str]] = None, limit:
 
     # Get the user's history
     user_history = user_history_table.get(user_id)
-    newest_listened_date = user_history.get('newest_listened_date') if user_history else None
-    oldest_listened_date = user_history.get('oldest_listened_date') if user_history else datetime.now(timezone.utc).isoformat()
+    current_newest_date = user_history.get('newest_listened_date') if user_history else None
+    current_oldest_date = user_history.get('oldest_listened_date') if user_history else datetime.now(timezone.utc).isoformat()
 
     # Convert categories to lowercase
     lowercase_categories = [cat.lower() for cat in categories] if categories else None
 
     logger.debug(f"Categories to fetch: {lowercase_categories}")
     # Query new articles (after newest_listened_date)
-    new_articles = query_articles(article_table, lowercase_categories, newest_listened_date, None, limit)
+    new_articles = query_articles(article_table, lowercase_categories, current_newest_date, None, limit)
     logger.debug(f"New articles retrieved: {len(new_articles)}")
 
     # If we don't have enough new articles, fetch older ones to fill the limit
     if len(new_articles) < limit:
-        older_articles = query_articles(article_table, lowercase_categories, None, oldest_listened_date, limit - len(new_articles))
+        older_articles = query_articles(article_table, lowercase_categories, None, current_oldest_date, limit - len(new_articles))
         logger.debug(f"Older articles retrieved: {len(older_articles)}")
         articles = new_articles + older_articles
     else:
@@ -36,18 +36,25 @@ def get_latest_news(user_id: str, categories: Optional[List[str]] = None, limit:
 
     # Update user's listened dates
     if articles:
-        current_new_date = max(parse_iso_date(article['date_published']) for article in articles)
-        current_old_date = min(parse_iso_date(article['date_published']) for article in articles)
+        new_new_date = max(parse_iso_date(article['date_published']) for article in articles)
+        new_old_date = min(parse_iso_date(article['date_published']) for article in articles)
         
         update_data = {'id': user_id}
+        # After every batch of new articles, update the newest_listened_date and oldest_listened_date based on the following
+        # The new batch could be fully new - We scraped lot of new news.
+        # Or partially new - we scraped a few new news than the batch size
+        # Or fully old - No new news have been scraped since the user's last visit.
+        if current_newest_date is None or parse_iso_date(current_newest_date) < new_new_date:
+            update_data['newest_listened_date'] = (new_new_date + timedelta(seconds=1)).isoformat()
+            logger.info(f"Updated newest_listened_date to: {new_new_date + timedelta(seconds=1)}")
         
-        if newest_listened_date is None or parse_iso_date(newest_listened_date) < current_new_date:
-            update_data['newest_listened_date'] = (current_new_date + timedelta(seconds=1)).isoformat()
-            logger.info(f"Updated newest_listened_date to: {current_new_date + timedelta(seconds=1)}")
+        if(current_newest_date is not None and parse_iso_date(current_newest_date) < new_old_date):
+            update_data['oldest_listened_date'] = (new_old_date - timedelta(seconds=1)).isoformat()
+            logger.info(f"Updated oldest_listened_date to: {new_old_date - timedelta(seconds=1)}")
         
-        if oldest_listened_date is None or parse_iso_date(oldest_listened_date) > current_old_date:
-            update_data['oldest_listened_date'] = (current_old_date - timedelta(seconds=1)).isoformat()
-            logger.info(f"Updated oldest_listened_date to: {current_old_date - timedelta(seconds=1)}")
+        elif current_oldest_date is None or parse_iso_date(current_oldest_date) > new_old_date:
+            update_data['oldest_listened_date'] = (new_old_date - timedelta(seconds=1)).isoformat()
+            logger.info(f"Updated oldest_listened_date to: {new_old_date - timedelta(seconds=1)}")
         
         if len(update_data) > 0:  # More than just 'id'
             user_history_table.addOrUpdate(update_data)

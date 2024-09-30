@@ -216,7 +216,7 @@
       "Type": "AWS::Lambda::Function",
       "Properties": {
         "Code": {
-          "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+          "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
         },
         "PackageType": "Image",
         "FunctionName": "ocs-backend-dev-app",
@@ -239,21 +239,21 @@
         "AppLogGroup"
       ]
     },
-    "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U": {
+    "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "AppLambdaFunction"
         },
-        "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+        "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
       }
     },
     "ParseFeedsScheduledLambdaFunction": {
       "Type": "AWS::Lambda::Function",
       "Properties": {
         "Code": {
-          "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+          "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
         },
         "PackageType": "Image",
         "FunctionName": "ocs-backend-dev-parseFeedsScheduled",
@@ -276,14 +276,25 @@
         "ParseFeedsScheduledLogGroup"
       ]
     },
-    "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY": {
+    "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "ParseFeedsScheduledLambdaFunction"
         },
-        "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+        "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
+      }
+    },
+    "ParseFeedsScheduledLambdaEvConf": {
+      "Type": "AWS::Lambda::EventInvokeConfig",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "ParseFeedsScheduledLambdaFunction"
+        },
+        "DestinationConfig": {},
+        "Qualifier": "$LATEST",
+        "MaximumRetryAttempts": 0
       }
     },
     "ParseFeedsScheduledEventsRuleSchedule1": {
@@ -487,7 +498,7 @@
     "AppLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
+        "Ref": "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg"
       },
       "Export": {
         "Name": "sls-ocs-backend-dev-AppLambdaFunctionQualifiedArn"
@@ -496,7 +507,7 @@
     "ParseFeedsScheduledLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+        "Ref": "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0"
       },
       "Export": {
         "Name": "sls-ocs-backend-dev-ParseFeedsScheduledLambdaFunctionQualifiedArn"

@@ -324,7 +324,7 @@
                     "Type": "AWS::Lambda::Function",
                     "Properties": {
                       "Code": {
-                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                       },
                       "PackageType": "Image",
                       "FunctionName": "ocs-backend-dev-app",
@@ -347,21 +347,21 @@
                       "AppLogGroup"
                     ]
                   },
-                  "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U": {
+                  "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg": {
                     "Type": "AWS::Lambda::Version",
                     "DeletionPolicy": "Retain",
                     "Properties": {
                       "FunctionName": {
                         "Ref": "AppLambdaFunction"
                       },
-                      "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                      "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                     }
                   },
                   "ParseFeedsScheduledLambdaFunction": {
                     "Type": "AWS::Lambda::Function",
                     "Properties": {
                       "Code": {
-                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                       },
                       "PackageType": "Image",
                       "FunctionName": "ocs-backend-dev-parseFeedsScheduled",
@@ -384,14 +384,25 @@
                       "ParseFeedsScheduledLogGroup"
                     ]
                   },
-                  "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY": {
+                  "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0": {
                     "Type": "AWS::Lambda::Version",
                     "DeletionPolicy": "Retain",
                     "Properties": {
                       "FunctionName": {
                         "Ref": "ParseFeedsScheduledLambdaFunction"
                       },
-                      "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                      "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
+                    }
+                  },
+                  "ParseFeedsScheduledLambdaEvConf": {
+                    "Type": "AWS::Lambda::EventInvokeConfig",
+                    "Properties": {
+                      "FunctionName": {
+                        "Ref": "ParseFeedsScheduledLambdaFunction"
+                      },
+                      "DestinationConfig": {},
+                      "Qualifier": "$LATEST",
+                      "MaximumRetryAttempts": 0
                     }
                   },
                   "ParseFeedsScheduledEventsRuleSchedule1": {
@@ -596,7 +607,7 @@
                   "AppLambdaFunctionQualifiedArn": {
                     "Description": "Current Lambda function version",
                     "Value": {
-                      "Ref": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
+                      "Ref": "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg"
                     },
                     "Export": {
                       "Name": "sls-ocs-backend-dev-AppLambdaFunctionQualifiedArn"
@@ -605,7 +616,7 @@
                   "ParseFeedsScheduledLambdaFunctionQualifiedArn": {
                     "Description": "Current Lambda function version",
                     "Value": {
-                      "Ref": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+                      "Ref": "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0"
                     },
                     "Export": {
                       "Name": "sls-ocs-backend-dev-ParseFeedsScheduledLambdaFunctionQualifiedArn"
@@ -755,7 +766,7 @@
                 "memory": 2048,
                 "timeout": 900,
                 "vpc": {},
-                "versionLogicalId": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
+                "versionLogicalId": "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg"
               },
               "parseFeedsScheduled": {
                 "image": {
@@ -773,12 +784,13 @@
                   "ENVIRONMENT": "production",
                   "STAGE": "dev"
                 },
+                "maximumRetryAttempts": 0,
                 "name": "ocs-backend-dev-parseFeedsScheduled",
                 "package": {},
                 "memory": 2048,
                 "timeout": 900,
                 "vpc": {},
-                "versionLogicalId": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+                "versionLogicalId": "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0"
               }
             }
           },
@@ -1115,7 +1127,7 @@
                     "Type": "AWS::Lambda::Function",
                     "Properties": {
                       "Code": {
-                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                       },
                       "PackageType": "Image",
                       "FunctionName": "ocs-backend-dev-app",
@@ -1138,21 +1150,21 @@
                       "AppLogGroup"
                     ]
                   },
-                  "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U": {
+                  "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg": {
                     "Type": "AWS::Lambda::Version",
                     "DeletionPolicy": "Retain",
                     "Properties": {
                       "FunctionName": {
                         "Ref": "AppLambdaFunction"
                       },
-                      "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                      "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                     }
                   },
                   "ParseFeedsScheduledLambdaFunction": {
                     "Type": "AWS::Lambda::Function",
                     "Properties": {
                       "Code": {
-                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                        "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                       },
                       "PackageType": "Image",
                       "FunctionName": "ocs-backend-dev-parseFeedsScheduled",
@@ -1175,14 +1187,25 @@
                       "ParseFeedsScheduledLogGroup"
                     ]
                   },
-                  "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY": {
+                  "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0": {
                     "Type": "AWS::Lambda::Version",
                     "DeletionPolicy": "Retain",
                     "Properties": {
                       "FunctionName": {
                         "Ref": "ParseFeedsScheduledLambdaFunction"
                       },
-                      "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                      "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
+                    }
+                  },
+                  "ParseFeedsScheduledLambdaEvConf": {
+                    "Type": "AWS::Lambda::EventInvokeConfig",
+                    "Properties": {
+                      "FunctionName": {
+                        "Ref": "ParseFeedsScheduledLambdaFunction"
+                      },
+                      "DestinationConfig": {},
+                      "Qualifier": "$LATEST",
+                      "MaximumRetryAttempts": 0
                     }
                   },
                   "ParseFeedsScheduledEventsRuleSchedule1": {
@@ -1387,7 +1410,7 @@
                   "AppLambdaFunctionQualifiedArn": {
                     "Description": "Current Lambda function version",
                     "Value": {
-                      "Ref": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
+                      "Ref": "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg"
                     },
                     "Export": {
                       "Name": "sls-ocs-backend-dev-AppLambdaFunctionQualifiedArn"
@@ -1396,7 +1419,7 @@
                   "ParseFeedsScheduledLambdaFunctionQualifiedArn": {
                     "Description": "Current Lambda function version",
                     "Value": {
-                      "Ref": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+                      "Ref": "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0"
                     },
                     "Export": {
                       "Name": "sls-ocs-backend-dev-ParseFeedsScheduledLambdaFunctionQualifiedArn"
@@ -1546,7 +1569,7 @@
                 "memory": 2048,
                 "timeout": 900,
                 "vpc": {},
-                "versionLogicalId": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
+                "versionLogicalId": "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg"
               },
               "parseFeedsScheduled": {
                 "image": {
@@ -1564,12 +1587,13 @@
                   "ENVIRONMENT": "production",
                   "STAGE": "dev"
                 },
+                "maximumRetryAttempts": 0,
                 "name": "ocs-backend-dev-parseFeedsScheduled",
                 "package": {},
                 "memory": 2048,
                 "timeout": 900,
                 "vpc": {},
-                "versionLogicalId": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+                "versionLogicalId": "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0"
               }
             }
           },
@@ -1908,7 +1932,7 @@
               "Type": "AWS::Lambda::Function",
               "Properties": {
                 "Code": {
-                  "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                  "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                 },
                 "PackageType": "Image",
                 "FunctionName": "ocs-backend-dev-app",
@@ -1931,21 +1955,21 @@
                 "AppLogGroup"
               ]
             },
-            "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U": {
+            "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg": {
               "Type": "AWS::Lambda::Version",
               "DeletionPolicy": "Retain",
               "Properties": {
                 "FunctionName": {
                   "Ref": "AppLambdaFunction"
                 },
-                "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
               }
             },
             "ParseFeedsScheduledLambdaFunction": {
               "Type": "AWS::Lambda::Function",
               "Properties": {
                 "Code": {
-                  "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                  "ImageUri": "322521590770.dkr.ecr.us-east-1.amazonaws.com/serverless-ocs-backend-dev@sha256:4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
                 },
                 "PackageType": "Image",
                 "FunctionName": "ocs-backend-dev-parseFeedsScheduled",
@@ -1968,14 +1992,25 @@
                 "ParseFeedsScheduledLogGroup"
               ]
             },
-            "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY": {
+            "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0": {
               "Type": "AWS::Lambda::Version",
               "DeletionPolicy": "Retain",
               "Properties": {
                 "FunctionName": {
                   "Ref": "ParseFeedsScheduledLambdaFunction"
                 },
-                "CodeSha256": "6f1723ad60b2a0b7b9b6521f8720fb0538efcd58ba213388f09bdef05e07e057"
+                "CodeSha256": "4b73e032c0ed524f08295b49c3d12306e5066282e54c4281d92eb3f8b131637f"
+              }
+            },
+            "ParseFeedsScheduledLambdaEvConf": {
+              "Type": "AWS::Lambda::EventInvokeConfig",
+              "Properties": {
+                "FunctionName": {
+                  "Ref": "ParseFeedsScheduledLambdaFunction"
+                },
+                "DestinationConfig": {},
+                "Qualifier": "$LATEST",
+                "MaximumRetryAttempts": 0
               }
             },
             "ParseFeedsScheduledEventsRuleSchedule1": {
@@ -2180,7 +2215,7 @@
             "AppLambdaFunctionQualifiedArn": {
               "Description": "Current Lambda function version",
               "Value": {
-                "Ref": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
+                "Ref": "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg"
               },
               "Export": {
                 "Name": "sls-ocs-backend-dev-AppLambdaFunctionQualifiedArn"
@@ -2189,7 +2224,7 @@
             "ParseFeedsScheduledLambdaFunctionQualifiedArn": {
               "Description": "Current Lambda function version",
               "Value": {
-                "Ref": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+                "Ref": "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0"
               },
               "Export": {
                 "Name": "sls-ocs-backend-dev-ParseFeedsScheduledLambdaFunctionQualifiedArn"
@@ -2339,7 +2374,7 @@
           "memory": 2048,
           "timeout": 900,
           "vpc": {},
-          "versionLogicalId": "AppLambdaVersionnRh8LFplc474FweDd8SwL90RckJAsPAEBfuuPnmR40U"
+          "versionLogicalId": "AppLambdaVersionZBD1ZDoChe2GCkAiGHuxbll85YxUuclKML4NAFGYbg"
         },
         "parseFeedsScheduled": {
           "image": {
@@ -2357,16 +2392,17 @@
             "ENVIRONMENT": "production",
             "STAGE": "dev"
           },
+          "maximumRetryAttempts": 0,
           "name": "ocs-backend-dev-parseFeedsScheduled",
           "package": {},
           "memory": 2048,
           "timeout": 900,
           "vpc": {},
-          "versionLogicalId": "ParseFeedsScheduledLambdaVersion4vrVXZk6qPABZc8hLVkKTavA2BZRvzYu8xKsmWQFSY"
+          "versionLogicalId": "ParseFeedsScheduledLambdaVersionZa96tXI4OdbWHtKplQh41roQFVWPioH2s0OoaU5TSC0"
         }
       }
     },
-    "serviceRawFile": "service: ocs-backend\n\nprovider:\n  name: aws\n  runtime: provided\n  region: us-east-1\n  stage: ${opt:stage, 'dev'}\n  memorySize: 2048\n  timeout: 900  # Adjusted to 30 seconds to comply with HTTP API limits\n  environment:\n    STAGE: ${opt:stage, 'dev'}\n    ENVIRONMENT: \"production\"\n\n  ecr:\n    images:\n      ocsbackend:\n        path: ./\n        platform: linux/amd64\n\n  httpApi:\n    cors:\n      allowedOrigins:\n        - http://localhost:3000\n        - https://getessence.app\n        - https://www.getessence.app\n        - https://main.d1lkh6gn3xrn6w.amplifyapp.com\n      allowedHeaders:\n        - Content-Type\n        - Authorization\n      allowedMethods:\n        - OPTIONS\n        - GET\n        - POST\n        - PUT\n        - DELETE\n      allowCredentials: false\n\n  iamRoleStatements:\n    - Effect: Allow\n      Action:\n        - dynamodb:*\n      Resource: \"arn:aws:dynamodb:us-east-1:322521590770:*\"\n    - Effect: Allow\n      Action:\n        - s3:*\n      Resource: \"arn:aws:s3:::*\"\n    - Effect: Allow\n      Action:\n        - polly:SynthesizeSpeech\n      Resource: \"*\"\n    - Effect: Allow\n      Action:\n        - secretsmanager:GetSecretValue\n      Resource: \"arn:aws:secretsmanager:us-west-1:322521590770:*\"\n    - Effect: Allow\n      Action:\n        - lambda:InvokeFunction\n      Resource: \"arn:aws:lambda:us-east-1:322521590770:function:${self:service}-${self:provider.stage}-*\"\n    - Effect: Allow\n      Action:\n        - ses:SendEmail\n        - ses:SendRawEmail\n      Resource: \"*\"\n    # Add permission for CloudWatch Events\n    - Effect: Allow\n      Action:\n        - events:PutRule\n        - events:PutTargets\n      Resource: \"*\"\n\nfunctions:\n  app:\n    image:\n      name: ocsbackend\n    events:\n      - httpApi: \n          path: /{any+}\n          method: '*' \n    environment:\n      ENVIRONMENT: \"production\"\n      STAGE: ${opt:stage, 'dev'}\n\n  parseFeedsScheduled:\n    image:\n      name: ocsbackend\n    events:\n      - schedule: cron(0 6 * * ? *)  # Run at 6:00 AM UTC every day\n      - schedule: cron(0 15 * * ? *)  # Run at 2:30 PM UTC every day\n    environment:\n      ENVIRONMENT: \"production\"\n      STAGE: ${opt:stage, 'dev'}\n\n",
+    "serviceRawFile": "service: ocs-backend\n\nprovider:\n  name: aws\n  runtime: provided\n  region: us-east-1\n  stage: ${opt:stage, 'dev'}\n  memorySize: 2048\n  timeout: 900  # Adjusted to 30 seconds to comply with HTTP API limits\n  environment:\n    STAGE: ${opt:stage, 'dev'}\n    ENVIRONMENT: \"production\"\n\n  ecr:\n    images:\n      ocsbackend:\n        path: ./\n        platform: linux/amd64\n\n  httpApi:\n    cors:\n      allowedOrigins:\n        - http://localhost:3000\n        - https://getessence.app\n        - https://www.getessence.app\n        - https://main.d1lkh6gn3xrn6w.amplifyapp.com\n      allowedHeaders:\n        - Content-Type\n        - Authorization\n      allowedMethods:\n        - OPTIONS\n        - GET\n        - POST\n        - PUT\n        - DELETE\n      allowCredentials: false\n\n  iamRoleStatements:\n    - Effect: Allow\n      Action:\n        - dynamodb:*\n      Resource: \"arn:aws:dynamodb:us-east-1:322521590770:*\"\n    - Effect: Allow\n      Action:\n        - s3:*\n      Resource: \"arn:aws:s3:::*\"\n    - Effect: Allow\n      Action:\n        - polly:SynthesizeSpeech\n      Resource: \"*\"\n    - Effect: Allow\n      Action:\n        - secretsmanager:GetSecretValue\n      Resource: \"arn:aws:secretsmanager:us-west-1:322521590770:*\"\n    - Effect: Allow\n      Action:\n        - lambda:InvokeFunction\n      Resource: \"arn:aws:lambda:us-east-1:322521590770:function:${self:service}-${self:provider.stage}-*\"\n    - Effect: Allow\n      Action:\n        - ses:SendEmail\n        - ses:SendRawEmail\n      Resource: \"*\"\n    # Add permission for CloudWatch Events\n    - Effect: Allow\n      Action:\n        - events:PutRule\n        - events:PutTargets\n      Resource: \"*\"\n\nfunctions:\n  app:\n    image:\n      name: ocsbackend\n    events:\n      - httpApi: \n          path: /{any+}\n          method: '*' \n    environment:\n      ENVIRONMENT: \"production\"\n      STAGE: ${opt:stage, 'dev'}\n\n  parseFeedsScheduled:\n    image:\n      name: ocsbackend\n    events:\n      - schedule: cron(0 6 * * ? *)  # Run at 6:00 AM UTC every day\n      - schedule: cron(0 15 * * ? *)  # Run at 2:30 PM UTC every day\n    environment:\n      ENVIRONMENT: \"production\"\n      STAGE: ${opt:stage, 'dev'}\n    maximumRetryAttempts: 0  # Set to 0 to disable retries for asynchronous invocations\n\n",
     "command": [
       "deploy"
     ],
@@ -2402,18 +2438,18 @@
     "serviceUniqueId": "arn:aws:cloudformation:us-east-1:322521590770:stack/ocs-backend-dev/ee0fb770-ed2e-11ee-97ad-0affc807a469",
     "serviceProviderAwsCfStackId": "arn:aws:cloudformation:us-east-1:322521590770:stack/ocs-backend-dev/ee0fb770-ed2e-11ee-97ad-0affc807a469",
     "serviceProviderAwsCfStackCreated": "2024-03-28T18:13:51.418Z",
-    "serviceProviderAwsCfStackUpdated": "2024-09-27T21:11:31.573Z",
+    "serviceProviderAwsCfStackUpdated": "2024-09-30T06:34:16.544Z",
     "serviceProviderAwsCfStackStatus": "UPDATE_COMPLETE",
     "serviceProviderAwsCfStackOutputs": [
       {
         "OutputKey": "ParseFeedsScheduledLambdaFunctionQualifiedArn",
-        "OutputValue": "arn:aws:lambda:us-east-1:322521590770:function:ocs-backend-dev-parseFeedsScheduled:2",
+        "OutputValue": "arn:aws:lambda:us-east-1:322521590770:function:ocs-backend-dev-parseFeedsScheduled:3",
         "Description": "Current Lambda function version",
         "ExportName": "sls-ocs-backend-dev-ParseFeedsScheduledLambdaFunctionQualifiedArn"
       },
       {
         "OutputKey": "AppLambdaFunctionQualifiedArn",
-        "OutputValue": "arn:aws:lambda:us-east-1:322521590770:function:ocs-backend-dev-app:38",
+        "OutputValue": "arn:aws:lambda:us-east-1:322521590770:function:ocs-backend-dev-app:39",
         "Description": "Current Lambda function version",
         "ExportName": "sls-ocs-backend-dev-AppLambdaFunctionQualifiedArn"
       },
