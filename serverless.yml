@@ -1,0 +1,98 @@
+service: ocs-backend
+
+provider:
+  name: aws
+  runtime: provided
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 2048
+  timeout: 900  # Adjusted to 30 seconds to comply with HTTP API limits
+  environment:
+    STAGE: ${opt:stage, 'dev'}
+    ENVIRONMENT: "production"
+    OPENSEARCH_HOST: search-essence-dev-5jp3fevlzytcz5q4puj7zytfqe.aos.us-east-1.on.aws
+    OPENSEARCH_PORT: 443
+    OPENSEARCH_INDEX: essence-news
+
+  ecr:
+    images:
+      ocsbackend:
+        path: ./
+        platform: linux/amd64
+
+  httpApi:
+    cors:
+      allowedOrigins:
+        - http://localhost:3000
+        - https://getessence.app
+        - https://www.getessence.app
+        - https://main.d1lkh6gn3xrn6w.amplifyapp.com
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - OPTIONS
+        - GET
+        - POST
+        - PUT
+        - DELETE
+      allowCredentials: false
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:*
+      Resource: "arn:aws:dynamodb:us-east-1:322521590770:*"
+    - Effect: Allow
+      Action:
+        - s3:*
+      Resource: "arn:aws:s3:::*"
+    - Effect: Allow
+      Action:
+        - polly:SynthesizeSpeech
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - secretsmanager:GetSecretValue
+      Resource: "arn:aws:secretsmanager:us-west-1:322521590770:secret:*"
+    - Effect: Allow
+      Action:
+        - secretsmanager:GetSecretValue
+      Resource: "arn:aws:secretsmanager:us-east-1:322521590770:secret:*"
+    - Effect: Allow
+      Action:
+        - lambda:InvokeFunction
+      Resource: "arn:aws:lambda:us-east-1:322521590770:function:${self:service}-${self:provider.stage}-*"
+    - Effect: Allow
+      Action:
+        - ses:SendEmail
+        - ses:SendRawEmail
+      Resource: "*"
+    # Add permission for CloudWatch Events
+    - Effect: Allow
+      Action:
+        - events:PutRule
+        - events:PutTargets
+      Resource: "*"
+    # Add OpenSearch permissions
+    - Effect: Allow
+      Action:
+        - es:ESHttp*
+      Resource: "arn:aws:es:us-east-1:322521590770:domain/essence-dev/*"
+
+functions:
+  app:
+    image:
+      name: ocsbackend
+    events:
+      - httpApi: 
+          path: /{any+}
+          method: '*' 
+
+  parseFeedsScheduled:
+    image:
+      name: ocsbackend
+    events:
+      - schedule: cron(0 6 * * ? *)  # Run at 6:00 AM UTC every day
+      - schedule: cron(0 15 * * ? *)  # Run at 2:30 PM UTC every day
+    maximumRetryAttempts: 0  # Set to 0 to disable retries for asynchronous invocations

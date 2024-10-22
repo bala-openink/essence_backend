@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "ocs-backend"
+version = "0.1.0"
+description = "One click summary - backend"
+authors = ["balamurugan-b <balaforfriends@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+Flask = "^3.0.2"
+gunicorn = "^21.2.0"
+openai = "^1.14.3"
+gTTS = "^2.5.1"
+serverless-wsgi = "^3.0.3"
+boto3 = "1.29.*"
+beautifulsoup4 = "^4.12.3"
+pydub = "^0.25.1"
+python-dotenv = "^1.0.1"
+google-cloud-texttospeech = "^2.17.1"
+pycountry = "^24.6.1"
+flask-cors = "^5.0.0"
+pyjwt = "^2.9.0"
+opensearch-py = "^2.7.1"
+numpy = "^2.1.2"
+scikit-learn = "^1.5.2"
+requests-aws4auth = "^1.3.1"
+flask-jwt-extended = "^4.6.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
