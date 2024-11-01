@@ -1,8 +1,9 @@
 from decimal import Decimal
 from lib.log import logger
-from services import vector_util, llm_util
-from db.repo import user_repository
+from util import vector_util, llm_util
+from db.repo.user_repository import UserRepository
 
+user_repository = UserRepository()
 
 def update_user_preferences(user_id, preferences_text):
     logger.info(f"Updating preferences for user {user_id}")

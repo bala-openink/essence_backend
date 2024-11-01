@@ -5,7 +5,7 @@ from decimal import Decimal
 class User:
     def __init__(self, email, first_name, country, language, id=None, status='unverified',
                  verification_code=None, tokens=None, preferences=None, created_at=None, updated_at=None,
-                 intro_audio_urls=None):
+                 intro_audio_urls=None, category=None):
         self.id = id or str(uuid.uuid4())
         self.email = email
         self.first_name = first_name
@@ -18,15 +18,24 @@ class User:
         self.created_at = created_at or datetime.utcnow()
         self.updated_at = updated_at or datetime.utcnow()
         self.intro_audio_urls = intro_audio_urls or {}
+        self.category = category
 
     def to_dict(self):
         preferences_dict = self.preferences.copy() if self.preferences else {}
         
-        # Truncate vector representations
+        # Truncate vector representations and convert Decimals to floats for JSON serialization
         if 'flat_vector' in preferences_dict:
-            preferences_dict['flat_vector'] = preferences_dict['flat_vector'][:5] + ['...']
+            vector = preferences_dict['flat_vector']
+            preferences_dict['flat_vector'] = [float(x) for x in vector[:5]]
+        
         if 'structured_vector' in preferences_dict:
-            preferences_dict['structured_vector'] = preferences_dict['structured_vector'][:5] + ['...']
+            vector = preferences_dict['structured_vector']
+            preferences_dict['structured_vector'] = [float(x) for x in vector[:5]]
+
+        # Convert category set to list if it exists
+        category = getattr(self, 'category', None)
+        if isinstance(category, set):
+            category = list(category)
 
         return {
             'id': self.id,
@@ -40,7 +49,8 @@ class User:
             'preferences': preferences_dict,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
-            'intro_audio_urls': self.intro_audio_urls
+            'intro_audio_urls': self.intro_audio_urls,
+            'category': category
         }
 
     @classmethod
@@ -57,5 +67,6 @@ class User:
             preferences=data.get('preferences', {}),
             created_at=datetime.fromisoformat(data['created_at']) if 'created_at' in data else None,
             updated_at=datetime.fromisoformat(data['updated_at']) if 'updated_at' in data else None,
-            intro_audio_urls=data.get('intro_audio_urls', {})
+            intro_audio_urls=data.get('intro_audio_urls', {}),
+            category=data.get('category')
         )

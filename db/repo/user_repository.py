@@ -7,7 +7,7 @@ class UserRepository:
         self._table = get_user_table()
 
     def create(self, user: User):
-        self._table.add(user.to_dict())
+        self._table.add(user)
         return user
 
     def get_by_id(self, user_id: str) -> User:
@@ -19,7 +19,7 @@ class UserRepository:
         return User.from_dict(user_dict) if user_dict else None
 
     def update(self, user: User):
-        self._table.addOrUpdate(user.to_dict())
+        self._table.addOrUpdate(user)
         return user
 
     def delete(self, user_id: str):
