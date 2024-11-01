@@ -87,7 +87,9 @@ def test_users():
                     del result['password_hash']  # Remove sensitive information
             else:
                 if 'intro_audio_urls' in result:
-                    del result['intro_audio_urls']  # Remove intro_audio_urls, that's long
+                    del result['intro_audio_urls'] 
+                if 'preferences' in result:
+                    del result['preferences']
 
             results.append(result)
 

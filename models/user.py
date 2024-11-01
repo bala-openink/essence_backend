@@ -20,6 +20,14 @@ class User:
         self.intro_audio_urls = intro_audio_urls or {}
 
     def to_dict(self):
+        preferences_dict = self.preferences.copy() if self.preferences else {}
+        
+        # Truncate vector representations
+        if 'flat_vector' in preferences_dict:
+            preferences_dict['flat_vector'] = preferences_dict['flat_vector'][:5] + ['...']
+        if 'structured_vector' in preferences_dict:
+            preferences_dict['structured_vector'] = preferences_dict['structured_vector'][:5] + ['...']
+
         return {
             'id': self.id,
             'email': self.email,
@@ -29,6 +37,7 @@ class User:
             'status': self.status,
             'verification_code': self.verification_code,
             'tokens': self.tokens,
+            'preferences': preferences_dict,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
             'intro_audio_urls': self.intro_audio_urls

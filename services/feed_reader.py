@@ -286,7 +286,7 @@ def deduplicate_articles(articles):
         if i not in deduplicated_indices:
             deduplicated_indices.add(i)
             for j in range(i + 1, len(articles)):
-                if similarity_matrix[i][j] > 0.85:  # Adjust this threshold as needed
+                if similarity_matrix[i][j] > 0.80:  # Adjust this threshold as needed
                     logger.debug(f"Duplicate found: {articles[i]['title']} and {articles[j]['title']} with similarity {similarity_matrix[i][j]:.4f}")
                     # Keep the more recent article
                     if articles[i]['date_published'] < articles[j]['date_published']:

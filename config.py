@@ -23,6 +23,8 @@ AWS_REGION_FOR_EMAIL = "us-west-1"
 OPENSEARCH_HOST = os.environ.get('OPENSEARCH_HOST', 'localhost')
 OPENSEARCH_PORT = os.environ.get('OPENSEARCH_PORT', '9200')
 OPENSEARCH_INDEX = os.environ.get('OPENSEARCH_INDEX', 'essence-news')
+OPENSEARCH_USERNAME = os.environ.get('OPENSEARCH_USERNAME', 'admin')
+OPENSEARCH_PASSWORD = os.environ.get('OPENSEARCH_PASSWORD', 'admin')
 
 JWT_EXPIRATION_DELTA=604800
 

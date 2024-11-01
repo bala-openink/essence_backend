@@ -90,6 +90,7 @@ def handle_token_refresh(user_id, existing_token, device_jti=None):
             user.verification_code = verification_code
             user.status = 'unverified'
             user_repository.update(user)
+            logger.info(f"Sending verification email to {user.email}, with code {verification_code}")
             send_verification_email(user.email, verification_code)
             return None, "Token expired. Verification code sent to email"
     

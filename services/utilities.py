@@ -25,6 +25,7 @@ stage = os.environ.get("STAGE", "dev")
 
 # Utility to retrieve the secrets like credentials, etc from AWS secret manager
 def get_secret(secret_key="OPENAI_API_KEY", default_value=None):
+    # TODO: Make this dynamic based on the stage
     secret_name = "essence-dev"
     region_name = "us-east-1"
 
@@ -77,7 +78,7 @@ def match_regex_list(regex_list, input_string):
     return False
 
 
-# log user activity to DB
+# log  activity to DB
 def log_user_activity(user_id, article_id, article_url, activity="READ", comments=None):
     # persist the user_activity output
     item = {

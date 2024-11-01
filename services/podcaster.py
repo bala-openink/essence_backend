@@ -10,7 +10,6 @@ import boto3
 from werkzeug.exceptions import BadRequest
 
 from pydub import AudioSegment
-from openai import OpenAI
 from google.cloud import texttospeech
 
 from services import utilities
@@ -18,11 +17,7 @@ from models.audio_story_request import AudioStoryRequest
 from lib.log import logger
 from db.repo.user_repository import UserRepository
 from models.user import User
-
-client = OpenAI(
-    # This is the default and can be omitted
-    api_key=utilities.get_secret("OPENAI_API_KEY")
-)
+from util import audio_util, llm_util
 
 # Dictionary containing the transition messages
 category_transitions = {
@@ -201,43 +196,37 @@ def generate_conversation(text_summary: str, length: str, language: str, region:
     single_speaker_prompt = (
         "Convert the following news summary into a podcast segment that feels like part of an ongoing monologue delivered by one speaker, Harry. "
         "Maintain a semi-formal, neutral, and unbiased tone while ensuring the content is engaging and flows naturally. "
-        "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
-        f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
-        f"Feel free to use this or come up with your own creative transitions that fit the context. "
+        # "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
+        # f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
+        # f"Feel free to use this or come up with your own creative transitions that fit the context. "
         "Ensure the segment stands alone while fitting naturally into a larger show. "
         f"The monologue should be in {language} and reflect the cultural and linguistic style of the {region} region. "
         f"Target a monologue length of approximately {word_count} words, not exceeding {word_count + 10} words. If necessary, condense content while preserving the news essence. "
         "Return the output as valid JSON, formatted as {\"male\": \"male dialogue\"}. Avoid prefixing with the presenter's name. "
-        f"Summary to convert: '{text_summary}' "
-        f"{f'Previous article summary to reference naturally: {previous_article}' if previous_article else ''}"
     )
 
     single_speaker_female_prompt = (
         "Convert the following news summary into a podcast segment that feels like part of an ongoing monologue delivered by one speaker, Emily. "
         "Maintain a semi-formal, neutral, and unbiased tone while ensuring the content is engaging and flows naturally. "
-        "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
-        f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
-        f"Feel free to use this or come up with your own creative transitions that fit the context. "
+        # "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
+        # f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
+        # f"Feel free to use this or come up with your own creative transitions that fit the context. "
         "Ensure the segment stands alone while fitting naturally into a larger show. "
         f"The monologue should be in {language} and reflect the cultural and linguistic style of the {region} region. "
         f"Target a monologue length of approximately {word_count} words, not exceeding {word_count + 10} words. If necessary, condense content while preserving the news essence. "
         "Return the output as valid JSON, formatted as {\"female\": \"female dialogue\"}. Avoid prefixing with the presenter's name. "
-        f"Summary to convert: '{text_summary}' "
-        f"{f'Previous article summary to reference naturally: {previous_article}' if previous_article else ''}"
     )
 
     two_speakers_prompt = (
         "Convert the following news summary into a podcast segment that feels like part of an ongoing conversation between two speakers, Harry and Emily, with each providing extended commentary before the other responds, maintaining a semi-formal news reporting style. The dialogue should flow smoothly without formal introductions, greetings or sign-offs."
         "Maintain a semi-formal, neutral, and unbiased tone while ensuring the content is engaging and flows naturally. "
-        "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
-        f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
-        f"Feel free to use this or come up with your own creative transitions that fit the context. "
+        # "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
+        # f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
+        # f"Feel free to use this or come up with your own creative transitions that fit the context. "
         "Ensure the segment stands alone while fitting naturally into a larger show. "
         f"The conversation should be in {language} and reflect the cultural and linguistic style of the {region} region. "
         f"Target a conversation length of approximately {word_count} words, not exceeding {word_count + 10} words. If necessary, condense content while preserving the news essence. "
         "Return the output as valid JSON, formatted as {\"male\": \"male dialogue\", \"female\": \"female dialogue\"}. Avoid any extra prefix in the output with the presenter names, Harry and Emily."
-        f"Summary to convert: '{text_summary}' "
-        f"{f'Previous article summary to reference naturally: {previous_article}' if previous_article else ''}"
     )
 
 
@@ -249,8 +238,6 @@ def generate_conversation(text_summary: str, length: str, language: str, region:
         f"Target a conversation length of approximately {word_count} words, not exceeding {word_count + 10} words. If necessary, condense content while preserving the news essence. "
         f"Return the conversation as valid clean JSON in the format {{\"male\": \"male dialogue\"{', \"female\": \"female dialogue\"' if two_speakers else ''}}}. "
         "Please avoid extra prefix in the output with presenter names, Harry, Emily, etc. "
-        f"Summary to convert: '{text_summary}' "
-        f"{f'Previous article summary to reference naturally: {previous_article}' if previous_article else ''}"
     )
 
     # prompt = (
@@ -263,23 +250,10 @@ def generate_conversation(text_summary: str, length: str, language: str, region:
     #     "The output should be a clean JSON object with no prefixes or extra formatting."
     # )
 
-    prompt = two_speakers_prompt if two_speakers else random.choice([single_speaker_prompt, single_speaker_female_prompt])
+    instructions = two_speakers_prompt if two_speakers else random.choice([single_speaker_prompt, single_speaker_female_prompt])
 
-    response = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        model="gpt-3.5-turbo",
-        max_tokens=1000,
-        temperature=0.2,  # Adjust for more deterministic output
-        top_p=1,
-        frequency_penalty=0.0,
-        presence_penalty=0.0
-    )
-
-    conversation = response.choices[0].message.content
-    logger.debug(conversation)  # Changed from info to debug
+    conversation = llm_util.chat_with_openai(text_summary, instructions)
+    logger.debug(conversation)
     
     try:
         # Convert the JSON response into a Python dictionary
@@ -290,49 +264,7 @@ def generate_conversation(text_summary: str, length: str, language: str, region:
     return conversation_json
 
 def generate_audio(speaker: str, text: str, language: str = "en"):
-    return generate_audio_openai(speaker, text, language)
-
-def generate_audio_openai(speaker: str, text: str, language: str = "en"):
-    response = client.audio.speech.create(
-        model="tts-1",
-        input=text,
-        voice="echo" if speaker == "male" else "shimmer",  # TODO: To handle other language and accents 
-    )
-    
-    # Stream the audio directly into memory using BytesIO
-    audio_content = BytesIO(response.content)
-    
-    # Load the audio into an AudioSegment for further processing
-    audio_segment = AudioSegment.from_file(audio_content, format="mp3")
-    logger.debug(f"Generated audio successfully for {speaker} : {text} ")  # Changed from info to debug
-    return audio_segment
-
-def generate_audio_google(speaker: str, text: str, language: str = "en"):
-    client = texttospeech.TextToSpeechClient()
-
-    input_text = texttospeech.SynthesisInput(text=text)
-
-    voice = texttospeech.VoiceSelectionParams(
-        language_code="en-GB",
-        name="en-GB-Studio-B" if speaker == "male" else "en-GB-Studio-C",
-    )
-
-    audio_config = texttospeech.AudioConfig(
-        audio_encoding=texttospeech.AudioEncoding.MP3,
-        speaking_rate=1.2
-    )
-
-    response = client.synthesize_speech(
-        request={"input": input_text, "voice": voice, "audio_config": audio_config}
-    )
-
-    # Stream the audio directly into memory using BytesIO
-    audio_content = BytesIO(response.audio_content)
-    
-    # Load the audio into an AudioSegment for further processing
-    audio_segment = AudioSegment.from_file(audio_content, format="mp3")
-    logger.debug(f"Generated audio from google tts successfully for {speaker} : {text} ")  # Changed from info to debug
-    return audio_segment
+    return audio_util.text_to_speech(text, speaker, language)
 
 def merge_audio_segments(audio_segments):
     combined = AudioSegment.silent(duration=0)

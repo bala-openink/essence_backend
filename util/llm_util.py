@@ -1,15 +1,10 @@
 import os
-from openai import OpenAI
+from services.openai_service import openai_service
 import json
 from services import utilities
 from lib.log import logger
 import numpy as np
 
-
-client = OpenAI(
-    # This is the default and can be omitted
-    api_key=utilities.get_secret("OPENAI_API_KEY")
-)
 
 def summarize_text_and_extract_categories(text):
     instructions = f"""
@@ -48,7 +43,7 @@ Provide your response in JSON format with the following structure:
 
 def chat_with_openai(text, instructions, model="gpt-4o-mini", temperature=0.5, max_tokens=4000):
     try:
-        response = client.chat.completions.create(
+        response = openai_service.client.chat.completions.create(
             messages=[
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": f"{text}"}
@@ -71,7 +66,7 @@ def chat_with_openai(text, instructions, model="gpt-4o-mini", temperature=0.5, m
 def get_embedding(text, model="text-embedding-3-small"):
     try:
         text = text.replace("\n", " ")
-        response = client.embeddings.create(input=[text], model=model)
+        response = openai_service.client.embeddings.create(input=[text], model=model)
         embedding = response.data[0].embedding
         return np.array(embedding)
     except Exception as e:
@@ -115,8 +110,6 @@ def convert_preferences_to_json(text):
             }
             // Add more dimensions as identified
         }
-
-        Here is the user's input: {text}
     """    
 
     response = chat_with_openai(text, instructions)
@@ -128,3 +121,31 @@ def convert_preferences_to_json(text):
         logger.error("Failed to parse JSON from OpenAI response.")
         return None
 
+def process_user_intent(transcribed_text):
+    instructions = """
+    Analyze the user's input and determine their intent. Map it to one of the following actions if applicable:
+    - skip: User wants to move to the next news item
+    - previous: User wants to move to the previous news item
+    - bookmark: User wants to save the current news item
+    - deepdive: User wants more information on the current topic
+
+    If the intent matches one of these actions, return the action name. If it's unclear or doesn't match, return "unclear".
+
+    Provide your response in JSON format with the following structure:
+    {
+        "intent": "skip/previous/bookmark/deepdive/unclear",
+        "confidence": 0.0 to 1.0,
+        "action": "frontend" for skip and deepdive, "backend" for bookmark, "none" for unclear,
+        "response": "A brief natural language response to the user's input in as few words as possible"
+    }
+    """
+    
+    response = chat_with_openai(transcribed_text, instructions)
+    
+    try:
+        result = json.loads(response)
+        logger.info(f"process_user_intent >> Response :: {result}")
+        return result["intent"], result["action"], result["response"]
+    except json.JSONDecodeError:
+        logger.error("Failed to parse JSON from OpenAI response in process_user_intent.")
+        return "unclear", "none", "I'm sorry, I didn't understand that. Could you please try again?"

@@ -22,6 +22,8 @@ from routes.public_routes import public_bp
 from routes.internal_routes import internal_bp
 from routes.tracking_routes import tracking_bp
 
+from services.user_management import update_user_preferences
+
 from db import db
 from lib.log import logger
 
@@ -43,7 +45,8 @@ CORS(app, resources={r"/*": {
         "http://localhost:3000",
         "http://192.168.2.197:3000",
         "https://www.getessence.app",
-        "https://main.d1lkh6gn3xrn6w.amplifyapp.com"
+        "https://main.d1lkh6gn3xrn6w.amplifyapp.com",
+        "https://dev.d1vn9ca3svg0a2.amplifyapp.com"
     ],
     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
@@ -433,6 +436,8 @@ def handler(event, context):
             feed_reader.parse_feeds(*args, **kwargs)
         elif function_name == 'generate_intro_audio_files':
             podcaster.generate_intro_audio_files(*args, **kwargs)
+        elif function_name == 'update_user_preferences':
+            update_user_preferences(*args, **kwargs)
         elif function_name in globals():
             globals()[function_name](*args, **kwargs)
         else:

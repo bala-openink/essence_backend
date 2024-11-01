@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from lib.log import logger
 from db import db
 import uuid
@@ -13,8 +13,20 @@ import csv
 import threading
 import time
 import os
+from services import podcaster
+from io import BytesIO
+from models.user import User
+from db.repo.user_repository import UserRepository
+from uuid import uuid4
+from lib.validators import validate_email
+from werkzeug.exceptions import BadRequest
+from services import utilities
+from services.user_management import update_user_preferences
+from services import user_news
 
 internal_bp = Blueprint('internal', __name__)
+
+user_repository = UserRepository()
 
 @internal_bp.route('/personalized_feed', methods=['GET'])
 def personalized_feed():
@@ -22,33 +34,18 @@ def personalized_feed():
     logger.info(f"personalized_feed route - Request ID: {request_id}")
     try:
         # Get the logged-in user's ID (you'll need to implement user authentication)
-        user_id = request.args.get('user_id')        
+        email = request.args.get('email')  
+        count = request.args.get('count', default=20, type=int)      
+        user = user_repository.get_by_email(email)
         # Get the user's preferences
-        user_preferences_vector = get_user_preferences(user_id)  # Implement this function to fetch user preferences
+        user_preferences_vector = user.preferences.get('structured_vector', None)
+        if user_preferences_vector is None:
+            user_preferences_vector = user.preferences.get('flat_vector', None)
         
-        logger.info(f"user_preferences_vector: {user_preferences_vector.shape}")
-        # Perform vector search on OpenSearch
-        client = db.get_opensearch_client()
-        query = {
-            "size": 20,  # Number of articles to return
-            "query": {
-                "knn": {
-                    "summary_vector": {
-                        "vector": user_preferences_vector.tolist(),  # The query vector
-                        "k": 20  # The number of nearest neighbors to return
-                    }
-                }
-            }
-        }
+        if user_preferences_vector is None:
+            return jsonify({"error": "User preferences not found"}), 404
         
-        response = client.search(index=OPENSEARCH_INDEX, body=query)
-        
-        # Process and format the results
-        articles = []
-        for hit in response['hits']['hits']:
-            article = hit['_source']
-            article['score'] = hit['_score']
-            articles.append(article)
+        articles = db.query_articles_for_user(user_preferences_vector, limit=count)
         
         return jsonify(articles), 200
     except Exception as e:
@@ -492,4 +489,194 @@ def generate_daily_top_articles():
 
     except Exception as e:
         logger.error(f"Error in generate_daily_top_articles route: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@internal_bp.route('/text_to_audio', methods=['POST'])
+def text_to_audio():
+    request_id = str(uuid.uuid4())
+    logger.info(f"text_to_audio route - Request ID: {request_id}")
+    try:
+        data = request.json
+        text = data.get('text')
+        speaker = data.get('speaker', 'male')  # Default to male if not specified
+        language = data.get('language', 'en')  # Default to English if not specified
+
+        if not text:
+            return jsonify({"error": "Text is required"}), 400
+
+        # Generate audio using the podcaster service
+        audio_segment = podcaster.generate_audio(speaker, text, language)
+
+        # Convert the audio segment to a byte stream
+        audio_bytes = BytesIO()
+        audio_segment.export(audio_bytes, format="mp3")
+        audio_bytes.seek(0)
+
+        # Send the audio file as a response
+        return send_file(
+            audio_bytes,
+            mimetype="audio/mpeg",
+            as_attachment=True,
+            download_name=f"audio_{request_id}.mp3"
+        )
+
+    except Exception as e:
+        logger.error(f"Error in text_to_audio route: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@internal_bp.route('/flush_user_history', methods=['GET'])
+def flush_user_history():
+    request_id = str(uuid.uuid4())
+    logger.info(f"flush_user_history route - Request ID: {request_id}")
+    try:
+        email = request.args.get('email')
+
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+
+        # Get the user by email
+        user = user_repository.get_by_email(email)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Get the user_listen_history table
+        user_history_table = db.get_user_listen_history_table()
+
+        # Delete the user's history
+        result = user_history_table.delete(user.id)
+
+        if result:
+            logger.info(f"User history flushed for user ID: {user.id}")
+            return jsonify({"message": "User listening history flushed successfully"}), 200
+        else:
+            logger.warning(f"No history found to flush for user ID: {user.id}")
+            return jsonify({"message": "No listening history found for the user"}), 200
+
+    except Exception as e:
+        logger.error(f"Error in flush_user_history route: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@internal_bp.route('/add_feeds', methods=['POST'])
+def add_feeds():
+    request_id = str(uuid.uuid4())
+    logger.info(f"add_feeds route - Request ID: {request_id}")
+    try:
+        data = request.json
+        if not isinstance(data, list):
+            data = [data]  # Convert single object to list
+
+        table = db.get_feed_table()
+        added_feeds = []
+
+        for feed in data:
+            # Validate mandatory fields
+            mandatory_fields = ['category', 'feed_url', 'rss_type', 'source_name']
+            if not all(field in feed for field in mandatory_fields):
+                return jsonify({"error": f"Missing mandatory field(s) in feed: {feed}"}), 400
+
+            # Prepare item for DynamoDB
+            new_feed = {
+                'id': str(uuid4()),  # Auto-generate ID
+                'category': feed['category'],
+                'feed_url': feed['feed_url'],
+                'rss_type': feed['rss_type'],
+                'source_name': feed['source_name'],
+                'status': 'disabled',  # Set status to disabled by default
+                'last_processed_date': datetime.now().isoformat()  # Set current time as last processed date
+            }
+
+            # Add to DynamoDB
+            table.addOrUpdate(new_feed)
+            added_feeds.append(new_feed)
+
+        return jsonify({"message": f"Successfully added {len(added_feeds)} feeds", "feeds": added_feeds}), 201
+
+    except Exception as e:
+        logger.error(f"Error in add_feeds route: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@internal_bp.route('/create_user_from_form', methods=['POST'])
+def create_user_from_form():
+    logger.info("create_user_from_form route")
+    try:
+        data = request.json
+        email = data.get('email')
+        if not email or not validate_email(email):
+            raise BadRequest("Invalid or missing email")
+
+        # Check if user already exists
+        existing_user = user_repository.get_by_email(email)
+        if existing_user:
+            return jsonify({"message": "User already exists", "user_id": existing_user.id}), 200
+
+        # Create new user
+        new_user = User(email=email, first_name=email.split('@')[0], country='Unknown', language='en')
+        user_repository.create(new_user)
+
+        # Process preferences
+        preferences = process_form_preferences(data)
+        
+        # Update user preferences
+        utilities.background_task(update_user_preferences, new_user.id, json.dumps(preferences))
+
+        return jsonify({
+            "message": "User created and preferences update initiated",
+            "user_id": new_user.id
+        }), 201
+
+    except BadRequest as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error in create_user_from_form: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+
+def process_form_preferences(data):
+    preferences = {
+        "Industry": {"values": data.get("industries", "").split(", ")},
+        "Geography": {"values": data.get("geographies", "").split(", ")},
+        "Topics": {"values": data.get("news_topics", "").split(", ")},
+        "Companies": {"values": data.get("brands_retailers", "").split(", ")},
+    }
+    
+    # Add any additional information from the "What have we missed?" field
+    additional_info = data.get("additional_info")
+    if additional_info:
+        preferences["Additional Information"] = {"values": [additional_info]}
+
+    return preferences
+
+@internal_bp.route('/latest_news', methods=['GET'])
+def internal_latest_news():
+    request_id = str(uuid.uuid4())
+    logger.info(f"internal_latest_news route - Request ID: {request_id}")
+    try:
+        # Get email from query parameters
+        email = request.args.get('email')
+        if not email:
+            return jsonify({"error": "Email parameter is required"}), 400
+
+        # Get optional parameters
+        categories = request.args.getlist('categories')
+        limit = int(request.args.get('limit', 10))
+
+        # Get user from repository
+        user = user_repository.get_by_email(email)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # If categories is empty, fetch from user table
+        if not categories:
+            categories = user.categories if hasattr(user, 'categories') else None
+
+
+        # Get articles using the user_news service
+        articles = user_news.get_latest_news(user, categories, limit)
+
+        return jsonify({
+            "articles": articles,
+            "count": len(articles)
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in internal_latest_news route: {str(e)}")
         return jsonify({"error": str(e)}), 500

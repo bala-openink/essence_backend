@@ -35,3 +35,4 @@ docker buildx build --no-cache --platform linux/amd64 -t ocs-backend --load .
 
  - for deploying only the function, without docker or env changes. Use this, as its fast
 > serverless deploy function -f app --stage dev 
+> serverless deploy function -f parseFeedsScheduled --stage dev

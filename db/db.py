@@ -10,7 +10,8 @@ from boto3.dynamodb.conditions import Key, Attr
 
 from lib.log import logger
 from opensearchpy import OpenSearch, RequestsHttpConnection, helpers
-from config import OPENSEARCH_HOST, OPENSEARCH_PORT, OPENSEARCH_INDEX
+from config import OPENSEARCH_HOST, OPENSEARCH_PORT, OPENSEARCH_INDEX, OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD
+from services.utilities import get_secret
 
 import config
 
@@ -25,8 +26,7 @@ _FEED_TABLE = None
 _OPENSEARCH_CLIENT = None
 
 # Using environment variable to determine local or production deployment
-# environment = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
-environment = 'LOCAL'
+environment = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
 # Get the current stage from environment variables
 stage = os.environ.get('STAGE', 'dev')
 summary_table_name = "content_summary_" + stage
@@ -273,29 +273,19 @@ def get_opensearch_client():
             # Local development settings
             _OPENSEARCH_CLIENT = OpenSearch(
                 hosts=[{'host': OPENSEARCH_HOST, 'port': OPENSEARCH_PORT}],
-                http_auth=('admin', 'admin'),  # Replace with your local authentication method if different
+                http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD), 
                 use_ssl=False,
                 verify_certs=False,
                 ssl_show_warn=False,
                 connection_class=RequestsHttpConnection
             )
         else:
-            # Production settings using IAM authentication
-            session = boto3.Session()
-            credentials = session.get_credentials()
-            region = session.region_name or 'us-east-1'  # Replace with your region if different
-
-            awsauth = AWS4Auth(
-                credentials.access_key,
-                credentials.secret_key,
-                region,
-                'es',
-                session_token=credentials.token
-            )
-
+            # Live and dev environment
+            # TODO: Make this dynamic based on the stage
+            opensearch_password = get_secret(secret_key='OPENSEARCH_PASSWORD', default_value=None)
             _OPENSEARCH_CLIENT = OpenSearch(
                 hosts=[{'host': OPENSEARCH_HOST, 'port': OPENSEARCH_PORT}],
-                http_auth=awsauth,
+                http_auth=(OPENSEARCH_USERNAME, opensearch_password),
                 use_ssl=True,
                 verify_certs=True,
                 connection_class=RequestsHttpConnection

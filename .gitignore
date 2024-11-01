@@ -1,0 +1,10 @@
+node_modules
+.dontcommit
+.venv
+.env
+.serverless
+.vscode
+*.zip
+__pycache__/
+layers
+*.pyc

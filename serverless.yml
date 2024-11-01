@@ -10,7 +10,7 @@ provider:
   environment:
     STAGE: ${opt:stage, 'dev'}
     ENVIRONMENT: "production"
-    OPENSEARCH_HOST: search-essence-dev-5jp3fevlzytcz5q4puj7zytfqe.aos.us-east-1.on.aws
+    OPENSEARCH_HOST: search-essence-live-riaec66r4nmfd5fx6e7up63ypu.aos.us-east-1.on.aws
     OPENSEARCH_PORT: 443
     OPENSEARCH_INDEX: essence-news
 
@@ -27,6 +27,7 @@ provider:
         - https://getessence.app
         - https://www.getessence.app
         - https://main.d1lkh6gn3xrn6w.amplifyapp.com
+        - https://dev.d1vn9ca3svg0a2.amplifyapp.com
       allowedHeaders:
         - Content-Type
         - Authorization
@@ -79,6 +80,14 @@ provider:
       Action:
         - es:ESHttp*
       Resource: "arn:aws:es:us-east-1:322521590770:domain/essence-dev/*"
+    # Add ECR permissions
+    - Effect: Allow
+      Action:
+        - ecr:GetAuthorizationToken
+        - ecr:BatchCheckLayerAvailability
+        - ecr:GetDownloadUrlForLayer
+        - ecr:BatchGetImage
+      Resource: "*"
 
 functions:
   app:

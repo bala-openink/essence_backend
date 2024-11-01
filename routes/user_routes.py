@@ -10,6 +10,7 @@ from decimal import Decimal
 from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, decode_token, get_jwt, verify_jwt_in_request
 
 from services import utilities
+from services.user_management import update_user_preferences
 from services.podcaster import generate_intro_audio_files
 from util import vector_util, llm_util
 from models.user import User
@@ -70,6 +71,7 @@ def handle_new_user(email, first_name, country, language, preferences):
     user = User(email, first_name, country, language, verification_code=generate_verification_code())
     user_repository.create(user)
 
+    logger.info(f"Sending verification email to {email}, with code {user.verification_code}")
     send_verification_email(email, user.verification_code)
     utilities.background_task(generate_intro_audio_files, user.first_name, user.id)
 
@@ -94,6 +96,7 @@ def handle_unverified_user(user, email, preferences):
     user.status = 'unverified'
     user_repository.update(user)
     
+    logger.info(f"Sending verification email to {email}, with code {user.verification_code}")
     send_verification_email(email, user.verification_code)
     
     if preferences:
@@ -225,30 +228,3 @@ def update_preferences():
 
     return jsonify({"message": "Preferences update initiated"}), 202
 
-def update_user_preferences(user_id, preferences_text):
-    logger.info(f"Updating preferences for user {user_id}")
-    try:
-        flat_vector = vector_util.create_flat_embedding(preferences_text)
-        preferences_json = llm_util.convert_preferences_to_json(preferences_text)
-        structured_vector = vector_util.create_user_embedding(preferences_json) if preferences_json else None
-
-        user = user_repository.get_by_id(user_id)
-        
-        preferences = {
-            'text': preferences_text,
-        }
-
-        if preferences_json:
-            preferences['json'] = preferences_json
-
-        if flat_vector is not None:
-            preferences['flat_vector'] = [Decimal(str(x)) for x in flat_vector.tolist()]
-
-        if structured_vector is not None:
-            preferences['structured_vector'] = [Decimal(str(x)) for x in structured_vector.tolist()]
-
-        user.preferences = preferences
-        user_repository.update(user)
-        logger.info(f"Preferences updated successfully for user {user_id}")
-    except Exception as e:
-        logger.error(f"Error updating preferences for user {user_id}: {str(e)}")
