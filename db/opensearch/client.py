@@ -1,0 +1,117 @@
+# db/opensearch/client.py
+
+from typing import Optional, Dict, Any
+from opensearchpy import OpenSearch, RequestsHttpConnection, helpers
+from requests_aws4auth import AWS4Auth
+
+from lib.log import logger
+from services.utilities import get_secret
+from ..interfaces.database import DatabaseClient
+from config import (
+    OPENSEARCH_HOST, 
+    OPENSEARCH_PORT, 
+    OPENSEARCH_INDEX, 
+    OPENSEARCH_USERNAME, 
+    OPENSEARCH_PASSWORD,
+    ENVIRONMENT
+)
+
+class OpenSearchClient(DatabaseClient):
+    """OpenSearch client management"""
+    
+    def __init__(self):
+        self._client = None
+        self._environment = ENVIRONMENT
+        
+    def connect(self) -> 'OpenSearchClient':
+        """Create OpenSearch client and initialize indices"""
+        if self._environment == 'LOCAL':
+            self._client = OpenSearch(
+                hosts=[{'host': OPENSEARCH_HOST, 'port': OPENSEARCH_PORT}],
+                http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
+                use_ssl=False,
+                verify_certs=False,
+                ssl_show_warn=False,
+                connection_class=RequestsHttpConnection
+            )
+        else:
+            opensearch_password = get_secret(secret_key='OPENSEARCH_PASSWORD', default_value=None)
+            self._client = OpenSearch(
+                hosts=[{'host': OPENSEARCH_HOST, 'port': OPENSEARCH_PORT}],
+                http_auth=(OPENSEARCH_USERNAME, opensearch_password),
+                use_ssl=True,
+                verify_certs=True,
+                connection_class=RequestsHttpConnection
+            )
+        
+        # Initialize indices after connection
+        self._initialize_indices()
+        return self
+
+    def _initialize_indices(self) -> None:
+        """Initialize all required OpenSearch indices"""
+        if not self._client:
+            raise RuntimeError("OpenSearch client not initialized")
+            
+        # Initialize article index
+        self.create_index_if_not_exists(
+            OPENSEARCH_INDEX,
+            self.get_article_index_mapping()
+        )
+
+    def disconnect(self) -> None:
+        """Close OpenSearch connection"""
+        self._client = None
+
+    def is_connected(self) -> bool:
+        """Check if OpenSearch is connected"""
+        return self._client is not None
+
+    def get_client(self) -> Optional[OpenSearch]:
+        """Get OpenSearch client"""
+        if not self._client:
+            self.connect()
+        return self._client
+
+    def create_index_if_not_exists(self, index_name: str, mapping: Dict) -> None:
+        """Create index if it doesn't exist"""
+        if not self._client.indices.exists(index=index_name):
+            self._client.indices.create(index=index_name, body=mapping)
+            logger.info(f"Created OpenSearch index: {index_name}")
+
+    def get_article_index_mapping(self) -> Dict[str, Any]:
+        """Get article index mapping"""
+        return {
+            "settings": {
+                "index": {
+                    "knn": True
+                }
+            },
+            "mappings": {
+                "properties": {
+                    "article_id": {"type": "keyword"},
+                    "summary_vector": {
+                        "type": "knn_vector",
+                        "dimension": 1536
+                    },
+                    "summary_200": {"type": "text"},
+                    "summary_50": {"type": "text"},
+                    "title": {"type": "text"},
+                    "url": {"type": "keyword"},
+                    "image": {"type": "keyword"},
+                    "date_published": {"type": "date"},
+                    "date_created": {"type": "date"},
+                    "rss_summary": {"type": "text"},
+                    "source_name": {"type": "keyword"},
+                    "type": {"type": "keyword"},
+                    "function": {"type": "text"},
+                    "industry": {"type": "text"},
+                    "region": {"type": "keyword"},
+                    "domain": {"type": "keyword"},
+                    "single_news_item": {"type": "boolean"},
+                    "categories": {"type": "keyword"},
+                    "audio_summary": {"type": "text"},
+                    "processing_status": {"type": "keyword"}
+                }
+            }
+        }

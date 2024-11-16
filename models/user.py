@@ -5,7 +5,7 @@ from decimal import Decimal
 class User:
     def __init__(self, email, first_name, country, language, id=None, status='unverified',
                  verification_code=None, tokens=None, preferences=None, created_at=None, updated_at=None,
-                 intro_audio_urls=None, category=None):
+                 intro_audio_urls=None, category=None, news_sources=None):
         self.id = id or str(uuid.uuid4())
         self.email = email
         self.first_name = first_name
@@ -19,7 +19,7 @@ class User:
         self.updated_at = updated_at or datetime.utcnow()
         self.intro_audio_urls = intro_audio_urls or {}
         self.category = category
-
+        self.news_sources = news_sources or []
     def to_dict(self):
         preferences_dict = self.preferences.copy() if self.preferences else {}
         
@@ -50,7 +50,8 @@ class User:
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
             'intro_audio_urls': self.intro_audio_urls,
-            'category': category
+            'category': category,
+            'news_sources': self.news_sources
         }
 
     @classmethod
@@ -68,5 +69,33 @@ class User:
             created_at=datetime.fromisoformat(data['created_at']) if 'created_at' in data else None,
             updated_at=datetime.fromisoformat(data['updated_at']) if 'updated_at' in data else None,
             intro_audio_urls=data.get('intro_audio_urls', {}),
-            category=data.get('category')
+            category=data.get('category'),
+            news_sources=data.get('news_sources', [])
         )
+
+    def to_dynamo_dict(self):
+        """Convert user object to DynamoDB-compatible dictionary (preserving Decimals)"""
+        # Use the original preferences dict without float conversion
+        preferences_dict = self.preferences.copy() if self.preferences else {}
+        
+        # Convert category set to list if it exists
+        category = getattr(self, 'category', None)
+        if isinstance(category, set):
+            category = list(category)
+
+        return {
+            'id': self.id,
+            'email': self.email,
+            'first_name': self.first_name,
+            'country': self.country,
+            'language': self.language,
+            'status': self.status,
+            'verification_code': self.verification_code,
+            'tokens': self.tokens,
+            'preferences': preferences_dict,  # Keeps Decimals intact
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'intro_audio_urls': self.intro_audio_urls,
+            'category': category,
+            'news_sources': self.news_sources
+        }

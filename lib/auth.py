@@ -4,12 +4,12 @@ import uuid
 from lib.email_service import send_email
 from services import utilities
 from lib.log import logger
-from db.repo.user_repository import UserRepository
 from config import JWT_EXPIRATION_DELTA
 import random
 import string
+from db.factory import db_factory
 
-user_repository = UserRepository()
+user_repository = db_factory.get_user_repository()
 
 def generate_token(user_id, jti=None):
     jti = jti or str(uuid.uuid4())
@@ -20,7 +20,7 @@ def generate_token(user_id, jti=None):
     token = create_access_token(identity=user_id, additional_claims=additional_claims, expires_delta=timedelta(seconds=int(JWT_EXPIRATION_DELTA)))
     
     # Store the token in the user table
-    user = user_repository.get_by_id(user_id)
+    user = user_repository.get(user_id)
     if user:
         token_data = {'jti': jti, 'created_at': datetime.utcnow().isoformat(), 'expires_at': expiration_time.isoformat()}
         user_repository.add_token(user_id, token_data)
@@ -33,7 +33,7 @@ def verify_token(token):
         user_id = decoded_token['sub']
         exp = datetime.fromtimestamp(decoded_token['exp'])
         jti = decoded_token['jti']
-        user = user_repository.get_by_id(user_id)
+        user = user_repository.get(user_id)
         if user and any(t['jti'] == jti for t in user.tokens):
             return user_id, exp, jti
     except Exception as e:
@@ -72,7 +72,7 @@ def is_token_about_to_expire(token, threshold_seconds=86400):  # 24 hours
         return False
 
 def handle_token_refresh(user_id, existing_token, device_jti=None):
-    user = user_repository.get_by_id(user_id)
+    user = user_repository.get(user_id)
     if not user:
         return None, "User not found"
 

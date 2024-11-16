@@ -18,6 +18,15 @@ To run locally,
 
 It runs on port 8000 by default (let it be)
 
+To run opensearch locally,
+
+docker run -e OPENSEARCH_INITIAL_ADMIN_PASSWORD='T!m3T0S3cur3!' \
+  -e discovery.type=single-node \
+  -e plugins.security.disabled=true \
+  -p 9200:9200 -p 9600:9600 \
+  --name local-opensearch \
+  opensearchproject/opensearch:latest
+
 2. Run gunicorn server locally on port 4000 (not using docker for faster troubleshooting)
 > gunicorn -b 0.0.0.0:4000 --workers 1  app:app
 

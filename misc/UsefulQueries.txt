@@ -1,0 +1,22 @@
+-- Create athena table for essence_live_user_activity using s3 bucket
+
+CREATE EXTERNAL TABLE IF NOT EXISTS essence_local_user_activity (
+    id STRING,
+    user_id STRING,
+    user_email STRING,
+    event_type STRING,
+    news_item_id STRING,
+    news_item_title STRING,
+    current_news_index INT,
+    audio_playback_time DOUBLE,
+    additional_data MAP<STRING, STRING>,
+    created_at TIMESTAMP               
+)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+WITH SERDEPROPERTIES (
+    'ignore.malformed.json' = 'true',
+    'dots.in.keys' = 'false',
+    'mapping.audio_playback_time' = 'DOUBLE'
+)
+LOCATION 's3://essence-activity-logs/local/events/'
+TBLPROPERTIES ('has_encrypted_data'='false');

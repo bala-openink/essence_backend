@@ -1,6 +1,13 @@
 import os
 
 
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
+STAGE = os.environ.get('STAGE', 'local')
+
+JWT_EXPIRATION_DELTA=604800
+
+SKIP_EXPENSIVE_OPERATIONS = os.environ.get('SKIP_EXPENSIVE_OPERATIONS', 'false').lower() == 'true'
+ADMIN_EMAIL = 'balaforfriends@gmail.com'
 
 DEFAULT_USERNAME = "default"
 S3_BUCKET_AUDIO_OUTPUT = "pp-audio-output"
@@ -26,8 +33,41 @@ OPENSEARCH_INDEX = os.environ.get('OPENSEARCH_INDEX', 'essence-news')
 OPENSEARCH_USERNAME = os.environ.get('OPENSEARCH_USERNAME', 'admin')
 OPENSEARCH_PASSWORD = os.environ.get('OPENSEARCH_PASSWORD', 'admin')
 
-JWT_EXPIRATION_DELTA=604800
+# PostgreSQL Configuration
+PG_HOST = os.environ.get('PG_HOST', 'localhost')
+PG_PORT = os.environ.get('PG_PORT', '5432')
+PG_DATABASE = os.environ.get('PG_DATABASE', 'essence-local')
+PG_USER = os.environ.get('PG_USER', 'bala')
+PG_PASSWORD = os.environ.get('PG_PASSWORD', 'bala')
 
-SKIP_EXPENSIVE_OPERATIONS = os.environ.get('SKIP_EXPENSIVE_OPERATIONS', 'false').lower() == 'true'
-ADMIN_EMAIL = 'balaforfriends@gmail.com'
+RETAIL_FUNCTIONS = [
+    "Sales",
+    "Marketing",
+    "Merchandising",
+    "Inventory Management",
+    "Supply Chain & Logistics", 
+    "Customer Service",
+    "Finance",
+    "Human Resources",
+    "IT & Technology",
+    "Security"
+]
+
+RETAIL_INDUSTRIES = [
+    "Grocery",
+    "Fashion",
+    "Electronics",
+    "Home Furnishings",
+    "Beauty",
+    "Health & Wellness",
+    "Automotive",
+    "Sports & Outdoors",   
+    "Toys & Hobbies",
+    "Office Supplies",
+    "Books, Music & Entertainment",
+    "Jewelry & Accessories",
+    "Pet Supplies",
+    "DIY & Hardware",
+    "Luxury Goods"  
+]
 

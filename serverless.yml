@@ -6,7 +6,7 @@ provider:
   region: us-east-1
   stage: ${opt:stage, 'dev'}
   memorySize: 2048
-  timeout: 900  # Adjusted to 30 seconds to comply with HTTP API limits
+  timeout: 1800 
   environment:
     STAGE: ${opt:stage, 'dev'}
     ENVIRONMENT: "production"

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import json
 import time
@@ -26,15 +26,15 @@ _FEED_TABLE = None
 _OPENSEARCH_CLIENT = None
 
 # Using environment variable to determine local or production deployment
-environment = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
-# Get the current stage from environment variables
-stage = os.environ.get('STAGE', 'dev')
+stage = config.STAGE
+environment = config.ENVIRONMENT
 summary_table_name = "content_summary_" + stage
 user_table_name = "user_" + stage
 user_activity_table_name = "user_activity_" + stage
 article_table_name = "article_" + stage
 user_listen_history_table_name = "user_listen_history_" + stage
 feed_table_name = "feed_" + stage
+article_relevance_table_name = "article_relevance_" + stage
 
 def create_dynamodb_resource(local=False):
     if local:
@@ -314,9 +314,15 @@ def create_opensearch_index_if_not_exists():
                     "url": {"type": "keyword"},
                     "image": {"type": "keyword"},
                     "date_published": {"type": "date"},
+                    "date_created": {"type": "date"},
                     "rss_summary": {"type": "text"},
                     "source_name": {"type": "keyword"},
                     "type": {"type": "keyword"},
+                    "function": {"type": "text"},
+                    "industry": {"type": "text"},
+                    "region": {"type": "keyword"},
+                    "domain": {"type": "keyword"},
+                    "single_news_item": {"type": "boolean"},
                     "categories": {"type": "keyword"},
                     "audio_summary": {"type": "text"},
                     "processing_status": {"type": "keyword"}
@@ -327,7 +333,7 @@ def create_opensearch_index_if_not_exists():
         logger.info(f"Created OpenSearch index: {OPENSEARCH_INDEX}")
 
 # Call this function during application startup
-create_opensearch_index_if_not_exists()
+# create_opensearch_index_if_not_exists()
 
 # DB interface
 class DB(object):
@@ -348,8 +354,27 @@ class DynamoDBImpl(DB):
     def __init__(self, table_resource):
         self._table = table_resource
 
-    def list(self):
-        response = self._table.scan()
+    def list(self, **kwargs):
+        if kwargs:
+            # Convert simple kwargs to DynamoDB filter expression
+            filter_expressions = []
+            expr_attr_names = {}
+            expr_attr_values = {}
+            
+            for key, value in kwargs.items():
+                filter_expressions.append(f'#{key} = :{key}')
+                expr_attr_names[f'#{key}'] = key
+                expr_attr_values[f':{key}'] = value
+                
+            scan_params = {
+                'FilterExpression': ' AND '.join(filter_expressions),
+                'ExpressionAttributeNames': expr_attr_names,
+                'ExpressionAttributeValues': expr_attr_values
+            }
+        else:
+            scan_params = {}
+            
+        response = self._table.scan(**scan_params)
         return response['Items']
 
     def add(self, item):
@@ -504,6 +529,63 @@ class DynamoDBImpl(DB):
             ExpressionAttributeValues={':date': last_processed_date}
         )
 
+    def batch_write_article_relevance(self, items):
+        """Batch write article relevance scores"""
+        with self._table.batch_writer() as batch:
+            for item in items:
+                batch.put_item(Item=item)
+
+    def query_articles_by_relevance(self, user_id, start_date=None, end_date=None, last_seen_date=None, limit=10):
+        """Query articles by relevance score for a user"""
+        query_params = {
+            'IndexName': 'UserRelevanceIndex',
+            'KeyConditionExpression': Key('user_id').eq(user_id),
+            'ScanIndexForward': False,  # Higher relevance first
+            'Limit': limit
+        }
+
+        # Add date and seen filtering
+        filter_expressions = []
+        expr_values = {}
+        
+        if start_date:
+            filter_expressions.append('date_published >= :start_date')
+            expr_values[':start_date'] = start_date
+        
+        if end_date:
+            filter_expressions.append('date_published <= :end_date')
+            expr_values[':end_date'] = end_date
+
+        # Only get unseen articles
+        filter_expressions.append('attribute_not_exists(seen_at)')
+
+        if filter_expressions:
+            query_params['FilterExpression'] = ' AND '.join(filter_expressions)
+            query_params['ExpressionAttributeValues'] = expr_values
+
+        try:
+            response = self._table.query(**query_params)
+            return response['Items']
+        except ClientError as e:
+            logger.error(f"Error querying article relevance: {str(e)}")
+            raise
+
+    def mark_articles_seen(self, user_id, article_ids):
+        """Mark articles as seen by a user"""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        for article_id in article_ids:
+            self._table.update_item(
+                Key={
+                    'user_id': user_id,
+                    'article_id': article_id
+                },
+                UpdateExpression='SET seen_at = :timestamp',
+                ExpressionAttributeValues={
+                    ':timestamp': timestamp
+                }
+            )
+
 # Add these new helper methods for OpenSearch operations
 
 def add_or_update_article(article):
@@ -575,14 +657,14 @@ def query_articles_by_status(status, start_date=None, end_date=None, limit=10):
                 ]
             }
         },
-        "sort": [{"date_published": {"order": "desc"}}],
+        "sort": [{"date_created": {"order": "desc"}}],
         "size": limit
     }
 
     if start_date and end_date:
         query["query"]["bool"]["must"].append({
             "range": {
-                "date_published": {
+                "date_created": {
                     "gte": start_date,
                     "lte": end_date
                 }
@@ -591,7 +673,7 @@ def query_articles_by_status(status, start_date=None, end_date=None, limit=10):
     elif start_date:
         query["query"]["bool"]["must"].append({
             "range": {
-                "date_published": {
+                "date_created": {
                     "gte": start_date
                 }
             }
@@ -599,7 +681,7 @@ def query_articles_by_status(status, start_date=None, end_date=None, limit=10):
     elif end_date:
         query["query"]["bool"]["must"].append({
             "range": {
-                "date_published": {
+                "date_created": {
                     "lte": end_date
                 }
             }
@@ -705,3 +787,95 @@ def query_articles_for_user(user_preferences_vector=None, start_date=None, end_d
     except Exception as e:
         logger.error(f"Error querying articles from OpenSearch: {str(e)}")
         return []
+
+def create_article_relevance_table(dynamodb, table_name):
+    table = dynamodb.create_table(
+        TableName=table_name,
+        KeySchema=[
+            {'AttributeName': 'user_id', 'KeyType': 'HASH'},  # Partition key
+            {'AttributeName': 'article_id', 'KeyType': 'RANGE'}  # Sort key
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'user_id', 'AttributeType': 'S'},
+            {'AttributeName': 'article_id', 'AttributeType': 'S'},
+            {'AttributeName': 'relevance_score', 'AttributeType': 'N'},
+            {'AttributeName': 'date_published', 'AttributeType': 'S'}
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                'IndexName': 'UserRelevanceIndex',
+                'KeySchema': [
+                    {'AttributeName': 'user_id', 'KeyType': 'HASH'},
+                    {'AttributeName': 'relevance_score', 'KeyType': 'RANGE'}
+                ],
+                'Projection': {'ProjectionType': 'ALL'},
+                'ProvisionedThroughput': {
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
+                }
+            }
+        ],
+        ProvisionedThroughput={'ReadCapacityUnits': 10, 'WriteCapacityUnits': 10}
+    )
+    table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+    logger.info(f"Table {table_name} created successfully.")
+    return table
+
+def get_article_relevance_table():
+    global _ARTICLE_RELEVANCE_TABLE
+    if _ARTICLE_RELEVANCE_TABLE is None:
+        dynamodb = create_dynamodb_resource(local=(environment == 'LOCAL'))
+        table = check_table_exists(dynamodb, article_relevance_table_name)
+        
+        if table is None:
+            logger.info(f"Table {article_relevance_table_name} does not exist. Creating table...")
+            table = create_article_relevance_table(dynamodb, article_relevance_table_name)
+        
+        _ARTICLE_RELEVANCE_TABLE = DynamoDBImpl(table)
+    return _ARTICLE_RELEVANCE_TABLE
+
+def delete_articles_by_date_range(start_date=None, end_date=None):
+    """
+    Delete articles within a given date range from OpenSearch.
+    Returns tuple of (number of deleted articles, error message if any)
+    """
+    client = get_opensearch_client()
+    
+    # Build the query
+    query = {
+        "query": {
+            "bool": {
+                "must": []
+            }
+        }
+    }
+
+    if start_date or end_date:
+        date_range = {"range": {"date_published": {}}}
+        if start_date:
+            date_range["range"]["date_published"]["gte"] = start_date
+        if end_date:
+            date_range["range"]["date_published"]["lte"] = end_date
+        query["query"]["bool"]["must"].append(date_range)
+    
+    try:
+        # First, count how many documents match the query
+        count_response = client.count(index=OPENSEARCH_INDEX, body=query)
+        total_docs = count_response['count']
+        
+        if total_docs == 0:
+            return 0, "No articles found in the specified date range"
+            
+        # Delete by query
+        response = client.delete_by_query(
+            index=OPENSEARCH_INDEX,
+            body=query,
+            refresh=True
+        )
+        
+        deleted_count = response['deleted']
+        return deleted_count, None
+        
+    except Exception as e:
+        logger.error(f"Error deleting articles from OpenSearch: {str(e)}")
+        return 0, str(e)

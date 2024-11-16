@@ -5,15 +5,15 @@ from lib.log import logger
 from io import BytesIO
 
 from services import user_news, utilities, podcaster
-from db.repo.user_repository import UserRepository
 from util import audio_util, llm_util
 import tempfile
 import os
 import time
 import base64
+from db.factory import db_factory
 
 public_bp = Blueprint('public', __name__)
-user_repository = UserRepository()
+user_repository = db_factory.get_user_repository()
 
 @public_bp.route('/latest_news', methods=['GET'])
 @jwt_required()
@@ -21,14 +21,14 @@ def latest_news():
     logger.info("latest_news route")
 
     user_id = get_jwt_identity()
-    user = user_repository.get_by_id(user_id)
+    user = user_repository.get(user_id)
 
     if not user:
         return jsonify({"message": "User not found"}), 404
 
     try:
         categories = request.args.getlist('categories')
-        limit = int(request.args.get('limit', 10))
+        limit = int(request.args.get('limit', 50))
 
         # Get first_time_ever, first_time_today, current_time from request
         first_time_ever = request.args.get('first_time_ever', 'false').lower() == 'true'
@@ -37,10 +37,6 @@ def latest_news():
 
         # Based on current_time, identify if its morning, afternoon, evening or night
         time_of_day = utilities.get_time_of_day(current_time)
-
-        #If categories is empty, fetch it from user table
-        if not categories:
-            categories = user.categories if hasattr(user, 'categories') else None
 
         # fetch the intro_audio_url from user table, based on first_time_ever, first_time_today, time_of_day
         intro_audios = user.intro_audio_urls if hasattr(user, 'intro_audio_urls') else None
@@ -70,7 +66,7 @@ def process_audio():
     logger.info("Starting process_audio route")
 
     user_id = get_jwt_identity()
-    user = user_repository.get_by_id(user_id)
+    user = user_repository.get(user_id)
 
     if not user:
         logger.warning(f"User not found. User ID: {user_id}")

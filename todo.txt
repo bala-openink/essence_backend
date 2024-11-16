@@ -1,2 +1,15 @@
 2024-10-21:
+ - Make feed processing multithreaded
+ - Handle invalid news items and exclude them from the feed
+ - Review deduplication logic. Seems there are some issues.
+ - UI to see the response of any API in a table view.
  - Handle token refresh in the frontend
+ - Create an object for article and manage it everywhere
+
+ - master api for key value pairs for preferences
+ - API to get the stored preferences for a user
+
+
+
+
+ 

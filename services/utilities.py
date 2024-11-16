@@ -21,7 +21,7 @@ import config
 from lib.log import logger
 from models.audio_story_request import AudioStoryRequest
 
-stage = os.environ.get("STAGE", "dev")
+stage = config.STAGE
 
 # Utility to retrieve the secrets like credentials, etc from AWS secret manager
 def get_secret(secret_key="OPENAI_API_KEY", default_value=None):
@@ -229,29 +229,6 @@ def generate_audio_url_public(file_source):
         return None
 
 
-def extract_transcript(url):
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://www.google.com/'
-        }
-
-        # Send an HTTP GET request to the URL
-        time.sleep(1)  # Wait for 2 seconds before making the request
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        
-        # Parse the HTML content using BeautifulSoup
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract and return the text content of the webpage
-        return soup.get_text()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching the webpage: {e}")
-        return None
-
 
 
 
@@ -350,28 +327,30 @@ def get_time_of_day(current_time):
         logger.error(f"Error getting time of day: {e}")
         return "day"
 
-def background_task(func, *args, **kwargs):
-    # Invokes the current lambda function as a background task, which is our app.py, and handler is the entry point.
+def background_task(task_path, *args, **kwargs):
     if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
         logger.info("Running a background task inside AWS Lambda")
-        # We're running in Lambda
-        lambda_function_name = os.environ['AWS_LAMBDA_FUNCTION_NAME']
         payload = {
             'background_task': True,
-            'function_name': func.__name__,
+            'task_path': task_path,
             'args': args,
             'kwargs': kwargs
         }
+
         lambda_client.invoke(
-            FunctionName=lambda_function_name,
-            InvocationType='Event',  # This makes it asynchronous
+            FunctionName=os.environ['AWS_LAMBDA_FUNCTION_NAME'],
+            InvocationType='Event',
             Payload=json.dumps(payload)
         )
-        logger.info(f"Invoked background task {func.__name__} with payload: {payload}")
+        logger.info(f"Invoked Lambda function for background task: {task_path} with payload: {payload}")
+        
     else:
-        # We're running locally
         logger.info("Running a background task locally")
-        thread = Thread(target=func, args=args, kwargs=kwargs)
+        # Import the function dynamically based on task_path
+        module_path, function_name = task_path.rsplit('.', 1)
+        module = __import__(module_path, fromlist=[function_name])
+        func = getattr(module, function_name)
+        thread = Thread(target=func, args=args, kwargs=kwargs, daemon=True)
         thread.start()
 
 
@@ -382,8 +361,8 @@ def process_events(events):
         logger.info("No events to process.")
         return
 
-    # Convert events to JSON
-    events_data = json.dumps([event.to_dict() for event in events])
+    # Convert events to line-delimited JSON (one event per line)
+    events_data = '\n'.join(json.dumps(event.to_dict()) for event in events)
     folder_by_day = datetime.datetime.utcnow().strftime("%Y-%m-%d")
     s3_key = f"{stage}/events/{folder_by_day}/{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}.json"
 
@@ -397,3 +376,14 @@ def process_events(events):
         logger.info(f"Flushed {len(events)} events to S3: {s3_key}")
     except Exception as e:
         logger.error(f"Failed to flush events to S3: {e}")
+
+# Convenience method to remove unnecessary fields before responding to client
+def prepare_for_transport(article):
+    if article:
+        article["audio_summary"] = generate_audio_url_public(
+            article["audio_summary"]
+        )
+        article["full_text"] = None
+        article["audio_summary_url"] = None
+        article["summary_vector"] = None
+    return article
