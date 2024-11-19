@@ -90,6 +90,10 @@ def get_embedding_normalized(article, model="text-embedding-3-small"):
         return embedding_array
     return embedding_array / np.linalg.norm(embedding_array)
 
+def get_embedding_for_text(text, model="text-embedding-3-small"):
+    embedding = get_base_embedding(text, model)
+    return np.array(embedding) / np.linalg.norm(np.array(embedding))
+
 def convert_preferences_to_json(text):
 
     instructions = """
@@ -198,7 +202,7 @@ def get_embedding_with_weights(text, region=None, categories=None, industry=None
         logger.error(f"Error in weighted embedding generation: {str(e)}")
         return np.array([])
 
-def get_base_embedding(text, model):
+def get_base_embedding(text, model="text-embedding-3-small"):
     try:
         response = openai_service.client.embeddings.create(
             input=[text.replace("\n", " ")], 

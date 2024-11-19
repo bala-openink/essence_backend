@@ -4,7 +4,6 @@ import uuid
 from util import llm_util
 from util import vector_util
 from opensearchpy import OpenSearch
-from config import OPENSEARCH_HOST, OPENSEARCH_PORT, OPENSEARCH_INDEX
 import numpy as np
 import json
 from datetime import datetime, timedelta
@@ -22,9 +21,10 @@ from werkzeug.exceptions import BadRequest
 from services import utilities
 from services.user_management import update_user_preferences
 from services import user_news
+from util import date_util
 from models.audio_story_request import AudioStoryRequest
 from db.factory import db_factory
-
+from services import user_feed
 internal_bp = Blueprint("internal", __name__)
 
 user_repository = db_factory.get_user_repository()
@@ -70,9 +70,9 @@ def generate_custom_podcast():
 
         # Convert to ISO format using parse_iso_date
         if start_date:
-            start_date = user_news.parse_iso_date(start_date).isoformat()
+            start_date = date_util.parse_iso_date(start_date).isoformat()
         if end_date:
-            end_date = user_news.parse_iso_date(end_date).isoformat()
+            end_date = date_util.parse_iso_date(end_date).isoformat()
 
         language = data.get("language", "en")
         region = data.get("region", "US")
@@ -80,7 +80,7 @@ def generate_custom_podcast():
         logger.info(
             f"Generating embedding for search query: '{search_query}' - Request ID: {request_id}"
         )
-        query_vector = llm_util.get_embedding_normalized(search_query)
+        query_vector = llm_util.get_embedding_for_text(search_query)
 
         # Debug vector properties
         logger.debug(f"Query vector type: {type(query_vector)}")
@@ -234,7 +234,8 @@ def personalized_feed():
     try:
         # Get the logged-in user's ID (you'll need to implement user authentication)
         email = request.args.get("email")
-        count = request.args.get("count", default=20, type=int)
+        limit = request.args.get("limit", default=20, type=int)
+        categories = request.args.getlist('categories')
         if email is None:
             raise BadRequest("No email received")
         
@@ -242,20 +243,32 @@ def personalized_feed():
         if user is None:
             raise BadRequest("User not found")
         
-        # Get the user's preferences
-        user_preferences_vector = user.preferences.get("structured_vector", None)
-        if user_preferences_vector is None:
-            user_preferences_vector = user.preferences.get("flat_vector", None)
-
-        if user_preferences_vector is None:
-            return jsonify({"error": "User preferences not found"}), 404
-
-        articles = article_repo.query_by_vector(user_preferences_vector, limit=count)
-        articles = [user_news.prepare_for_transport(article) for article in articles]
+        articles = user_news.get_latest_news_v2(user, categories, limit)
 
         return jsonify(articles), 200
     except Exception as e:
         logger.error(f"Error in personalized_feed route: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@internal_bp.route("/create_user_feed", methods=["GET"])
+def create_user_feed():
+    request_id = str(uuid.uuid4())
+    logger.info(f"create_user_feed route - Request ID: {request_id}")
+    try:
+        # Get the logged-in user's ID (you'll need to implement user authentication)
+        email = request.args.get("email")
+        if email is None:
+            raise BadRequest("No email received")
+        
+        user = user_repository.get_by_email(email)
+        if user is None:
+            raise BadRequest("User not found")
+        
+        user_feed.create_feeds_for_user(user.id)
+
+        return jsonify("User feed created successfully"), 200
+    except Exception as e:
+        logger.error(f"Error in create_user_feed route: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -263,234 +276,6 @@ def personalized_feed():
 def get_logged_in_user_id():
     # Implement user authentication and return the user ID
     return "jackson"
-
-
-def get_user_preferences(user_id, type="flat"):
-    jackson = """
-    {
-        "Geography": {
-            "values": [
-                "Germany",
-                "Rest of mainland Europe",
-                "UK",
-                "US",
-                "India",
-                "Rest of World"
-            ],
-            "exclude_values": [],
-            "priority_order": true
-        },
-        "Distribution channel": {
-            "values": [
-                "Online",
-                "Offline"
-            ],
-            "exclude_values": [],
-            "priority_order": true
-        },
-        "Industry": {
-            "values": [
-                "Fashion",
-                "Sports",
-                "Tech",
-                "Electronics",
-                "Retail"
-            ],
-            "exclude_values": [
-                "Grocery"
-            ],
-            "priority_order": true
-        },
-        "Function": {
-            "values": [
-                "Merchandising",
-                "Planning",
-                "Cataloguing",
-                "Retail Trading",
-                "Site Merchandising",
-                "User Experience",
-                "Product",
-                "Tech Platform",
-                "OMS / WMS / ERP",
-                "Pricing",
-                "Online marketing",
-                "Social / SEA /SEO / Affiliates",
-                "CRM",
-                "Warehousing",
-                "last mile",
-                "Analytics / BI",
-                "Customer support"
-            ],
-            "exclude_values": [],
-            "priority_order": false
-        },
-        "Topics": {
-            "values": [
-                "Financial numbers",
-                "Executive movements",
-                "New product launches",
-                "Stock market movements",
-                "Mergers and acquisitions",
-                "Regulations"
-            ],
-            "exclude_values": ["Black Friday"],
-            "priority_order": false
-        },
-        "Companies": {
-            "values": [
-                "LVMH",
-                "Hugo Boss",
-                "PVH",
-                "Kering",
-                "Ralph Lauren",
-                "Zara",
-                "H&M",
-                "Uniqlo",
-                "Nike",
-                "Adidas",
-                "ON",
-                "Hoka",
-                "UnderArmour",
-                "Lululemon",
-                "amazon",   
-                "Zalando",
-                "JD",
-                "Aboutyou", 
-                "Asos",
-                "shein",
-                "Otto",
-                "ebay",
-                "Unisport"                  
-            ],
-            "exclude_values": ["Temu"],
-            "priority_order": false
-        }
-    }
-    """
-
-    bala_ = """
-    {
-        "Geography": {
-            "values": [
-                "UK",
-                "US",
-                "India",
-                "China",
-                "Rest of World"
-            ],
-            "exclude_values": [],
-            "priority_order": false
-        },
-        "Topics": {
-            "values": ["All"],
-            "exclude_values": [],
-            "priority_order": false
-        },
-        "Companies": {
-            "values": ["All"],
-            "exclude_values": [],
-            "priority_order": false
-        }
-    }
-    """
-
-    bala = """Everything related to fashion and grocery"""
-
-    tony = """
-    {
-        "Geography": {
-            "values": [
-                "UK",
-                "US",
-                "India",
-                "China",
-                "Rest of World"
-            ],
-            "exclude_values": [],
-            "priority_order": false
-        },
-        "Distribution channel": {
-            "values": [
-                "Online",
-                "Offline"
-            ],
-            "exclude_values": [],
-            "priority_order": false
-        },
-        "Industry": {
-            "values": [
-                "Grocery",
-                "Food",
-                "Retail",
-                "CPG"
-            ],
-            "exclude_values": [
-                "Tech",
-                "Electronics",
-                "Fashion"            
-            ],
-            "priority_order": false
-        },
-        "Topics": {
-            "values": [
-                "Growth",
-                "Ecommerce",
-                "Financial numbers",
-                "Trends",
-                "Quick commerce",
-                "Executive movements",
-                "New product launches",
-                "Stock market movements",
-                "Mergers and acquisitions"
-            ],
-            "exclude_values": [],
-            "priority_order": false
-        },
-        "Companies": {
-            "values": [
-                "Nestle",
-                "Pepsi",
-                "Unilever",
-                "M&S",
-                "Lidl",
-                "Aldi",
-                "Costco",
-                "Walmart",
-                "Target",
-                "Best Buy",
-                "Home Depot",
-                "Lowe's",
-                "Amazon"
-            ],
-            "exclude_values": [],
-            "priority_order": false
-        }
-    }
-    """
-
-    jackson_dict = json.loads(jackson)
-    tony_dict = json.loads(tony)
-    bala_dict = json.loads(bala_)
-
-    if type == "flat":
-        if user_id == "jackson":
-            return vector_util.create_flat_embedding(jackson)
-        elif user_id == "tony":
-            return vector_util.create_flat_embedding(tony)
-        elif user_id == "bala":
-            return vector_util.create_flat_embedding(bala)
-        else:
-            return None
-    else:
-        if user_id == "jackson":
-            return vector_util.create_user_embedding(jackson_dict)
-        elif user_id == "tony":
-            return vector_util.create_user_embedding(tony_dict)
-        elif user_id == "bala":
-            return vector_util.create_user_embedding(bala_dict)
-        else:
-            return None
-
 
 @internal_bp.route("/categorize_articles", methods=["GET"])
 def categorize_articles():
@@ -766,45 +551,48 @@ def add_feeds():
 
 @internal_bp.route("/create_user_from_form", methods=["POST"])
 def create_user_from_form():
+    '''
+    Create a new user from a form submission, update user preferences and create a user feed.
+    If user exists, updates the user's preferences and creates a user feed.
+    '''
     logger.info("create_user_from_form route")
     try:
         data = request.json
+        if not isinstance(data, dict):
+            raise BadRequest("Invalid request data")
+        
         email = data.get("email")
+        first_name = data.get("first_name")
         if not email or not validate_email(email):
             raise BadRequest("Invalid or missing email")
 
         # Check if user already exists
-        existing_user = user_repository.get_by_email(email)
-        if existing_user:
-            return (
-                jsonify(
-                    {"message": "User already exists", "user_id": existing_user.id}
-                ),
-                200,
+        user = user_repository.get_by_email(email)
+        if not user:
+            # Create new user
+            user = User(
+                email=email,
+                first_name=first_name if first_name else email.split("@")[0],
+                country="Unknown",
+                language="en",
             )
-
-        # Create new user
-        new_user = User(
-            email=email,
-            first_name=email.split("@")[0],
-            country="Unknown",
-            language="en",
-        )
-        user_repository.add(new_user)
+            user_repository.add(user)
+            message = "User created, preferences update and feed creation initiated"
+        else:
+            message = "User updated, preferences update and feed creation initiated"
 
         # Process preferences
         preferences = process_form_preferences(data)
 
         # Update user preferences
-        utilities.background_task(
-            'services.user_management.update_user_preferences', new_user.id, json.dumps(preferences)
-        )
+        utilities.background_task('services.user_management.update_user_preferences', user.id, json.dumps(preferences))
+        utilities.background_task('services.user_feed.create_feeds_for_user', user.id)
 
         return (
             jsonify(
                 {
-                    "message": "User created and preferences update initiated",
-                    "user_id": new_user.id,
+                    "message": message,
+                    "user_id": user.id,
                 }
             ),
             201,
@@ -819,10 +607,16 @@ def create_user_from_form():
 
 def process_form_preferences(data):
     preferences = {
-        "Industry": {"values": data.get("industries", "").split(", ")},
-        "Geography": {"values": data.get("geographies", "").split(", ")},
-        "Topics": {"values": data.get("news_topics", "").split(", ")},
-        "Companies": {"values": data.get("brands_retailers", "").split(", ")},
+        **{
+            k: {"values": v.split(", ")} 
+            for k, v in {
+                "Industry": data.get("industries"),
+                "Geography": data.get("geographies"), 
+                "Topics": data.get("news_topics"),
+                "Companies": data.get("brands_retailers")
+            }.items()
+            if v and v.strip()
+        }
     }
 
     # Add any additional information from the "What have we missed?" field
@@ -990,4 +784,56 @@ def update_opensearch_mapping():
     except Exception as e:
         logger.error(f"Error updating OpenSearch mapping - Request ID: {request_id}: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@internal_bp.route('/users', methods=['GET'])
+def list_users():
+    request_id = str(uuid.uuid4())
+    logger.info(f"list_users route - Request ID: {request_id}")
+    try:
+        # Get optional parameters
+        limit = request.args.get('limit', default=None, type=int)
+        email = request.args.get('email', default=None)
+        all_attributes = request.args.get('all_attributes', default='false').lower() == 'true'
+
+        if email:
+            user = user_repository.get_by_email(email)
+        else:
+            users = user_repository.get_verified_users()
+
+        # Extract desired fields
+        results = []
+        users_to_process = [user] if email else users
+
+        for user in users_to_process:
+            # Convert User object to dict, excluding sensitive fields
+            result = user.to_dict().copy()
+            
+            # Always remove password hash for security
+            result.pop('password_hash', None)
+            
+            if not all_attributes:
+                # Remove additional fields when not requesting all attributes
+                result.pop('intro_audio_urls', None)
+                result.pop('preferences', None)
+
+            results.append(result)
+
+        # Apply limit if specified
+        if limit is not None:
+            results = results[:limit]
+
+        list_size = len(results)
+        logger.info(f"Fetched {list_size} users from DynamoDB - Request ID: {request_id}")
+        
+        # Include the list size in the response
+        response = {
+            'count': list_size,
+            'users': results
+        }
+        
+        return jsonify(response), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching users: {str(e)} - Request ID: {request_id}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 

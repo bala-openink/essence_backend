@@ -1,16 +1,17 @@
 import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from services import utilities
 from lib.log import logger
 import time
 import numpy as np
 from models.user import User
-from util import vector_util
+from util import vector_util, date_util
 from db.factory import db_factory
 
 user_repository = db_factory.get_user_repository()
 user_history_repo = db_factory.get_generic_repository("user_listen_history")
 article_repo = db_factory.get_article_repository()
+user_feed_repo = db_factory.get_user_feed_repository()
 
 # To fetch latest news for a user
 def get_latest_news(
@@ -67,10 +68,10 @@ def get_latest_news(
     # Update user's listened dates
     if deduplicated_articles:
         new_new_date = max(
-            parse_iso_date(article.get("date_published")) for article in deduplicated_articles
+            date_util.parse_iso_date(article.get("date_published")) for article in deduplicated_articles
         )
         new_old_date = min(
-            parse_iso_date(article.get("date_published")) for article in deduplicated_articles
+            date_util.parse_iso_date(article.get("date_published")) for article in deduplicated_articles
         )
 
         update_data = {"id": user.id}
@@ -80,7 +81,7 @@ def get_latest_news(
         # Or fully old - No new news have been scraped since the user's last visit.
         if (
             current_newest_date is None
-            or parse_iso_date(current_newest_date) < new_new_date
+            or date_util.parse_iso_date(current_newest_date) < new_new_date
         ):
             update_data["newest_listened_date"] = (
                 new_new_date + datetime.timedelta(seconds=1)
@@ -91,7 +92,7 @@ def get_latest_news(
 
         if (
             current_newest_date is not None
-            and parse_iso_date(current_newest_date) < new_old_date
+            and date_util.parse_iso_date(current_newest_date) < new_old_date
         ):
             update_data["oldest_listened_date"] = (
                 new_old_date - datetime.timedelta(seconds=1)
@@ -102,7 +103,7 @@ def get_latest_news(
 
         elif (
             current_oldest_date is None
-            or parse_iso_date(current_oldest_date) > new_old_date
+            or date_util.parse_iso_date(current_oldest_date) > new_old_date
         ):
             update_data["oldest_listened_date"] = (
                 new_old_date - datetime.timedelta(seconds=1)
@@ -124,18 +125,94 @@ def get_latest_news(
     articles = [prepare_for_transport(article) for article in articles]
     return articles
 
-
-def parse_iso_date(date_string: str) -> datetime.datetime:
-    return datetime.datetime.fromisoformat(date_string).astimezone(datetime.timezone.utc)
-
-
 # Convenience method to remove unnecessary fields before responding to client
 def prepare_for_transport(article):
-    if article:
-        article["audio_summary"] = utilities.generate_audio_url_public(
-            article["audio_summary"]
+    if not article:
+        return article
+        
+    result = dict(article)  # Convert DictRow to regular dict first
+    result["audio_summary"] = utilities.generate_audio_url_public(
+        result["audio_summary"]
+    )
+    
+    # Now we can use dict.pop with two arguments
+    result.pop("full_text", None)
+    result.pop("audio_summary_url", None)
+    result.pop("summary_vector", None)
+    result.pop("user_id", None)
+            
+    return result
+
+def _fetch_articles_with_retry(
+    user_id: str,
+    start_date: datetime.datetime,
+    end_date: datetime.datetime,
+    limit: int,
+    attempt: int = 1,
+    max_attempts: int = 3
+) -> List[dict]:
+    
+    logger.debug(f"Fetching articles with retry for user {user_id} from {start_date} to {end_date} with limit {limit}, attempt {attempt}")
+    # Get preferred source articles first
+    articles = user_feed_repo.get_latest_news(
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        preferred_only=True
+    )
+
+    # If we don't have enough articles, get non-preferred source articles
+    if len(articles) < limit:
+        non_preferred_articles = user_feed_repo.get_latest_news(
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit - len(articles),
+            preferred_only=False
         )
-        article["full_text"] = None
-        article["audio_summary_url"] = None
-        article["summary_vector"] = None
-    return article
+        articles.extend(non_preferred_articles)
+
+    # If still no articles and we haven't exceeded max attempts, try with an earlier start date
+    if not articles and attempt < max_attempts:
+        new_start_date = start_date - datetime.timedelta(days=1)
+        return _fetch_articles_with_retry(
+            user_id=user_id,
+            start_date=new_start_date,
+            end_date=end_date,
+            limit=limit,
+            attempt=attempt + 1,
+            max_attempts=max_attempts
+        )
+
+    return articles
+
+# Update get_latest_news_v2 to use the new method
+def get_latest_news_v2(
+    user: User, categories: Optional[List[str]] = None, limit: int = 10
+) -> List[dict]:
+    start_time = time.time()
+
+    start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)
+    end_date = datetime.datetime.now(datetime.timezone.utc)
+    
+    articles = _fetch_articles_with_retry(
+        user_id=user.id,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+
+    if articles:
+        # Mark articles as sent
+        article_ids = [article["article_id"] for article in articles]
+        user_feed_repo.mark_feeds_as_sent(user.id, article_ids)
+    else:
+        logger.info("No articles found")
+
+    end_time = time.time()
+    logger.debug(
+        f"Total get_latest_news_v2 function execution time: {end_time - start_time:.3f} seconds"
+    )
+
+    return [prepare_for_transport(article) for article in articles]

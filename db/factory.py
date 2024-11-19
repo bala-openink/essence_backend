@@ -25,19 +25,28 @@ class DatabaseFactory:
     @property
     def dynamo_client(self) -> DynamoDBClient:
         if not self._dynamo_client:
-            self._dynamo_client = DynamoDBClient(local=(self.environment == 'LOCAL')).connect()
+            self._dynamo_client = DynamoDBClient(
+                local=(self.environment == 'LOCAL'),
+                stage=self.stage
+            ).connect()
         return self._dynamo_client
 
     @property
     def opensearch_client(self) -> OpenSearchClient:
         if not self._opensearch_client:
-            self._opensearch_client = OpenSearchClient().connect()
+            self._opensearch_client = OpenSearchClient(
+                local=(self.environment == 'LOCAL'),
+                stage=self.stage
+            ).connect()
         return self._opensearch_client
         
     @property
     def postgres_client(self) -> PostgreSQLClient:
         if not self._postgres_client:
-            self._postgres_client = PostgreSQLClient(local=(self.environment == 'LOCAL')).connect()
+            self._postgres_client = PostgreSQLClient(
+                local=(self.environment == 'LOCAL'),
+                stage=self.stage
+            ).connect()
         return self._postgres_client
 
     #########################################################

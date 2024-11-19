@@ -22,8 +22,6 @@ from db.factory import db_factory
 
 stage = config.STAGE
 
-user_feed_service = user_feed.UserFeedService()
-
 # Initialize repositories
 feed_repo = db_factory.get_generic_repository('feed')
 feed_batch_repo = db_factory.get_feed_batch_repository()
@@ -190,6 +188,7 @@ def update_batch_status(batch_id, stage, result=None, error_msg=None, feed=None)
 
 # Parses the feed from rss.app
 def process_stage1_rssapp(source_name, category, feed_url):
+    logger.info(f"process_stage1_rssapp for feed_url: {feed_url}")
     processed_count = 0
     skipped_count = 0
     errors = []
@@ -495,12 +494,12 @@ def process_stage3(batch_id=None, user_offset=0, total_users=0, batch_size=10):
     """
     try:
         # Get next batch of users
-        active_users = user_feed_service.get_active_users(offset=user_offset, limit=batch_size)
+        active_users = user_feed.get_active_users(offset=user_offset, limit=batch_size)
                 
         logger.info(f"Processing batch of {len(active_users)} users (offset: {user_offset}/{total_users})")
         
         # Process the batch of users
-        user_feed_service.create_user_feeds_for_articles(active_users, batch_id)
+        user_feed.create_feeds_for_users(active_users, batch_id)
         
         # Trigger next batch
         next_offset = user_offset + batch_size

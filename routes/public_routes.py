@@ -28,7 +28,7 @@ def latest_news():
 
     try:
         categories = request.args.getlist('categories')
-        limit = int(request.args.get('limit', 50))
+        limit = int(request.args.get('limit', 20))
 
         # Get first_time_ever, first_time_today, current_time from request
         first_time_ever = request.args.get('first_time_ever', 'false').lower() == 'true'
@@ -47,7 +47,7 @@ def latest_news():
             logger.info(f"key: {key}")
             intro_audio_url = intro_audios.get(key, None)
 
-        articles = user_news.get_latest_news(user, categories, limit)
+        articles = user_news.get_latest_news_v2(user, categories, limit)
 
         return jsonify({
             "intro_audio": utilities.generate_audio_url_public(intro_audio_url) if intro_audio_url else None,

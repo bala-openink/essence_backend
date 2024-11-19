@@ -7,28 +7,24 @@ from requests_aws4auth import AWS4Auth
 from lib.log import logger
 from services.utilities import get_secret
 from ..interfaces.database import DatabaseClient
-from config import (
-    OPENSEARCH_HOST, 
-    OPENSEARCH_PORT, 
-    OPENSEARCH_INDEX, 
-    OPENSEARCH_USERNAME, 
-    OPENSEARCH_PASSWORD,
-    ENVIRONMENT
-)
+import config
+import constants
 
 class OpenSearchClient(DatabaseClient):
     """OpenSearch client management"""
     
-    def __init__(self):
+    def __init__(self, local: bool = False, stage: str = constants.STAGE_LOCAL):
         self._client = None
-        self._environment = ENVIRONMENT
+        self._environment = config.ENVIRONMENT
+        self.stage = stage
+        self.local = local
         
     def connect(self) -> 'OpenSearchClient':
         """Create OpenSearch client and initialize indices"""
         if self._environment == 'LOCAL':
             self._client = OpenSearch(
-                hosts=[{'host': OPENSEARCH_HOST, 'port': OPENSEARCH_PORT}],
-                http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
+                hosts=[{'host': config.OPENSEARCH_HOST, 'port': config.OPENSEARCH_PORT}],
+                http_auth=(config.OPENSEARCH_USERNAME, config.OPENSEARCH_PASSWORD),
                 use_ssl=False,
                 verify_certs=False,
                 ssl_show_warn=False,
@@ -37,8 +33,8 @@ class OpenSearchClient(DatabaseClient):
         else:
             opensearch_password = get_secret(secret_key='OPENSEARCH_PASSWORD', default_value=None)
             self._client = OpenSearch(
-                hosts=[{'host': OPENSEARCH_HOST, 'port': OPENSEARCH_PORT}],
-                http_auth=(OPENSEARCH_USERNAME, opensearch_password),
+                hosts=[{'host': config.OPENSEARCH_HOST, 'port': config.OPENSEARCH_PORT}],
+                http_auth=(config.OPENSEARCH_USERNAME, opensearch_password),
                 use_ssl=True,
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
@@ -53,9 +49,10 @@ class OpenSearchClient(DatabaseClient):
         if not self._client:
             raise RuntimeError("OpenSearch client not initialized")
             
-        # Initialize article index
+        # Initialize article index with stage suffix
+        index_name = f"{config.OPENSEARCH_INDEX}_{self.stage}"
         self.create_index_if_not_exists(
-            OPENSEARCH_INDEX,
+            index_name,
             self.get_article_index_mapping()
         )
 

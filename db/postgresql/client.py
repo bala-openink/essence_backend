@@ -7,13 +7,15 @@ from typing import Optional, Any
 from lib.log import logger
 from ..interfaces.database import DatabaseClient
 import config
+import constants 
 from services import utilities
 
 class PostgreSQLClient(DatabaseClient):
     """PostgreSQL client management"""
     
-    def __init__(self, local: bool = False):
+    def __init__(self, local: bool = False, stage: str = constants.STAGE_LOCAL):
         self.local = local
+        self.stage = stage
         self._conn: Optional[psycopg2_connection] = None
         self._cursor: Optional[psycopg2_cursor] = None
         self._environment = config.ENVIRONMENT
@@ -25,8 +27,10 @@ class PostgreSQLClient(DatabaseClient):
             else:
                 pg_password = utilities.get_secret(secret_key='PG_PASSWORD', default_value=config.PG_PASSWORD)
 
+            database_name = f"{config.PG_DATABASE}_{self.stage}"
+
             connection_params = {
-                'dbname': config.PG_DATABASE,
+                'dbname': database_name,
                 'user': config.PG_USER,
                 'password': pg_password,
                 'host': config.PG_HOST,
@@ -59,7 +63,7 @@ class PostgreSQLClient(DatabaseClient):
         """Create necessary tables if they don't exist"""
         if self._cursor:
             self._cursor.execute("""
-                CREATE TABLE IF NOT EXISTS user_feeds (
+                CREATE TABLE IF NOT EXISTS user_feed (
                 id SERIAL PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
                 article_id VARCHAR(255) NOT NULL,
@@ -71,23 +75,23 @@ class PostgreSQLClient(DatabaseClient):
                 summary_50 TEXT,
                 summary_200 TEXT,
                 audio_summary TEXT,
-                categories JSONB,
+                categories TEXT[],
                 source_name VARCHAR(255),
                 type VARCHAR(255),
                 is_from_preferred_source BOOLEAN,
                 score FLOAT,
+                sent_to_user BOOLEAN DEFAULT FALSE,
                 date_created TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, article_id)
             );
             
             -- Primary index for date-based queries with score
-            CREATE INDEX IF NOT EXISTS idx_user_feeds_date_published_score 
-            ON user_feeds(user_id, date_published DESC, score DESC);
+            CREATE INDEX IF NOT EXISTS idx_user_feed_date_published_score 
+            ON user_feed(user_id, date_published DESC, score DESC);
                                  
             -- Primary index for date-based queries with score
-            CREATE INDEX IF NOT EXISTS idx_user_feeds_date_created_score 
-            ON user_feeds(user_id, date_created DESC, score DESC);
-
+            CREATE INDEX IF NOT EXISTS idx_user_feed_date_created_score 
+            ON user_feed(user_id, date_created DESC, score DESC);
             """)
         if self._conn:
             self._conn.commit()

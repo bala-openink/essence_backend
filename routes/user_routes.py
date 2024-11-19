@@ -58,7 +58,7 @@ def validate_signin_data(data):
     if not validate_language(language):
         raise BadRequest("Invalid language code")
 
-    return email, first_name, country, language, preferences
+    return email.lower(), first_name.capitalize(), country.upper(), language.upper(), preferences
 
 def handle_new_user(email, first_name, country, language, preferences):
     logger.debug(f"handle_new_user: {email}, {first_name}, {country}, {language}, {preferences}")
@@ -124,6 +124,7 @@ def verify():
     user_repository.update(user)
 
     utilities.background_task('services.podcaster.generate_intro_audio_files', user.first_name, user.id)
+    utilities.background_task('services.user_feed.create_feeds_for_user', user.id)
 
     token, device_jti = generate_token(user.id)
     return jsonify({"token": token, "device_jti": device_jti, "message": "Email verified successfully"}), 200

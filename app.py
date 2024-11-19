@@ -44,16 +44,13 @@ CORS(app, resources={r"/*": {
         "http://192.168.2.197:3000",
         "https://www.getessence.app",
         "https://main.d1lkh6gn3xrn6w.amplifyapp.com",
-        "https://dev.d1vn9ca3svg0a2.amplifyapp.com"
+        "https://dev.d1vn9ca3svg0a2.amplifyapp.com",
+        "https://develop.d2f7pba6ta58v6.amplifyapp.com"
     ],
     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
     "expose_headers": ["Content-Type", "Authorization"]
 }})
-
-
-
-localMode = True
 
 # Register the user Blueprint
 app.register_blueprint(user_bp, url_prefix='/user')
@@ -187,41 +184,44 @@ def parse_feeds_scheduled(event, context):
 
 def execute_background_task(task_path, args=None, kwargs=None):
     """
-    Dynamically execute a background task, supporting both functions and class methods
+    Dynamically executes a function from a module using its string path.
+    
+    Args:
+        task_path (str): Dot-separated path to the function (e.g., 'services.feed_reader.process_stage1')
+        args (list, optional): Positional arguments to pass to the function
+        kwargs (dict, optional): Keyword arguments to pass to the function
+    
+    Limitations:
+        - Only supports module-level functions (not direct class method calls like 'module.MyClass.method')
+        - Module path must be importable from the root of the project
+        - No support for async functions (will execute synchronously)
+        - All required modules must be available in the Python path
     """
     args = args or []
     kwargs = kwargs or {}
     
     try:
-        # Split the path into parts
-        *module_parts, final_part = task_path.split('.')
+        logger.info(f"Starting execution of background task: {task_path}")
+        logger.debug(f"Task arguments - args: {args}, kwargs: {kwargs}")
+        
+        # Split the path into module path and function name
+        *module_parts, function_name = task_path.split('.')
         module_path = '.'.join(module_parts)
         
-        # Import the module
-        module = __import__(module_path, fromlist=[final_part])
+        logger.info(f"Resolved module path: {module_path}, function: {function_name}")
         
-        # Get the target (could be function, class, or class method)
-        target = module
-        for part in module_path.split('.')[1:]:
-            target = getattr(target, part)
-            
-        # If the final part contains a class and method
-        if '.' in final_part:
-            class_name, method_name = final_part.split('.')
-            class_obj = getattr(target, class_name)
-            
-            # If it's a static method or class method
-            if hasattr(class_obj, method_name):
-                task_function = getattr(class_obj, method_name)
-            else:
-                # If it's an instance method, create an instance
-                instance = class_obj()
-                task_function = getattr(instance, method_name)
-        else:
-            # Regular function
-            task_function = getattr(target, final_part)
-            
-        return task_function(*args, **kwargs)
+        module = __import__(module_path, fromlist=[function_name])
+        logger.debug(f"Successfully imported module: {module.__name__}")
+    
+        task_function = getattr(module, function_name)
+        logger.debug(f"Successfully retrieved function {function_name} from module")
+        
+        # Execute the function
+        logger.info(f"Executing function {function_name}")
+        result = task_function(*args, **kwargs)
+        logger.info(f"Successfully completed background task: {task_path}")
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error executing background task {task_path}: {str(e)}", exc_info=True)

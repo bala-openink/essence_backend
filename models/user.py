@@ -7,10 +7,10 @@ class User:
                  verification_code=None, tokens=None, preferences=None, created_at=None, updated_at=None,
                  intro_audio_urls=None, category=None, news_sources=None):
         self.id = id or str(uuid.uuid4())
-        self.email = email
-        self.first_name = first_name
-        self.country = country
-        self.language = language
+        self.email = email.lower()
+        self.first_name = first_name.capitalize()
+        self.country = country.upper()
+        self.language = language.upper()
         self.status = status
         self.verification_code = verification_code
         self.tokens = tokens or []
@@ -20,6 +20,7 @@ class User:
         self.intro_audio_urls = intro_audio_urls or {}
         self.category = category
         self.news_sources = news_sources or []
+        
     def to_dict(self):
         preferences_dict = self.preferences.copy() if self.preferences else {}
         

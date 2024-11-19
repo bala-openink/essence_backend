@@ -36,7 +36,7 @@ OPENSEARCH_PASSWORD = os.environ.get('OPENSEARCH_PASSWORD', 'admin')
 # PostgreSQL Configuration
 PG_HOST = os.environ.get('PG_HOST', 'localhost')
 PG_PORT = os.environ.get('PG_PORT', '5432')
-PG_DATABASE = os.environ.get('PG_DATABASE', 'essence-local')
+PG_DATABASE = os.environ.get('PG_DATABASE', 'essence')
 PG_USER = os.environ.get('PG_USER', 'bala')
 PG_PASSWORD = os.environ.get('PG_PASSWORD', 'bala')
 
@@ -70,4 +70,3 @@ RETAIL_INDUSTRIES = [
     "DIY & Hardware",
     "Luxury Goods"  
 ]
-

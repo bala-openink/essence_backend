@@ -6,13 +6,17 @@ provider:
   region: us-east-1
   stage: ${opt:stage, 'dev'}
   memorySize: 2048
-  timeout: 1800 
+  timeout: 900 
   environment:
     STAGE: ${opt:stage, 'dev'}
     ENVIRONMENT: "production"
     OPENSEARCH_HOST: search-essence-live-riaec66r4nmfd5fx6e7up63ypu.aos.us-east-1.on.aws
     OPENSEARCH_PORT: 443
     OPENSEARCH_INDEX: essence-news
+    PG_HOST: postgres-db1.czwy8yo4ccyz.us-east-1.rds.amazonaws.com
+    PG_PORT: 5432
+    PG_DATABASE: essence
+    PG_USER: postgres
 
   ecr:
     images:
@@ -28,6 +32,7 @@ provider:
         - https://www.getessence.app
         - https://main.d1lkh6gn3xrn6w.amplifyapp.com
         - https://dev.d1vn9ca3svg0a2.amplifyapp.com
+        - https://develop.d2f7pba6ta58v6.amplifyapp.com
       allowedHeaders:
         - Content-Type
         - Authorization

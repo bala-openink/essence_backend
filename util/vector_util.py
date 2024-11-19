@@ -1,6 +1,7 @@
 import numpy as np
 from util import llm_util
 from lib.log import logger
+import datetime
 
 # Compute the cosine similarity matrix for a given matrix A
 def cosine_similarity(A):
@@ -20,6 +21,10 @@ def cosine_similarity(A):
 
 # Compute the cosine similarity between two vectors
 def cosine_similarity_vector(A, B):
+    # Convert potential Decimal values from DynamoDB to float numpy array
+    A = np.array(A, dtype=np.float64)
+    B = np.array(B, dtype=np.float64)
+    
     dot_product = np.dot(A, B)
     norm_A = np.linalg.norm(A)
     norm_B = np.linalg.norm(B)
@@ -70,7 +75,8 @@ def deduplicate_articles(articles):
     if not articles:
         return [], []
 
-    logger.info(f"Starting deduplication process with {len(articles)} articles")
+    start_time = datetime.datetime.now()
+    logger.info(f"Starting deduplication process with {len(articles)} articles at {start_time}")
 
     vectors = np.array([article.get('summary_vector') for article in articles])
     similarity_matrix = cosine_similarity(vectors)
@@ -102,12 +108,13 @@ def deduplicate_articles(articles):
                         original_articles.remove(j)
                         logger.debug(f"Marked newer article as duplicate: {articles[j]['id']}")
 
-    logger.info(f"Deduplication complete. Found {len(duplicate_articles)} duplicates. {len(original_articles)} articles remaining.")
+    end_time = datetime.datetime.now()
+    logger.info(f"Deduplication complete. Found {len(duplicate_articles)} duplicates. {len(original_articles)} articles remaining. Took {end_time - start_time} seconds.")
     deduplicated_articles = [articles[i] for i in original_articles]
     
     return duplicate_articles, deduplicated_articles
 
-def sort_by_preference_vector(articles, preference_vector):
+def sort_by_preference_vector(articles, preference_vector, descending=True):
     """
     Sort articles based on cosine similarity between their summary vectors and user preference vector.
     
@@ -119,8 +126,12 @@ def sort_by_preference_vector(articles, preference_vector):
         List of articles sorted by descending similarity score
     """
     # Calculate cosine similarity and add score to each article
-    for article in articles:
-        article['score'] = cosine_similarity_vector(article.get('summary_vector'), preference_vector)
+    try:
+        for article in articles:
+            article['score'] = float(cosine_similarity_vector(article.get('summary_vector'), preference_vector))
+    except Exception as e:
+        logger.error(f"Error in sort_by_preference_vector: {str(e)}")
+        raise
     
     # Sort by score in descending order
-    return sorted(articles, key=lambda x: x.get('score'), reverse=True)
+    return sorted(articles, key=lambda x: x.get('score'), reverse=descending)

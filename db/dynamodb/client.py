@@ -5,12 +5,14 @@ from typing import Optional, Any, Dict
 from lib.log import logger
 from ..interfaces.database import DatabaseClient
 import config
+import constants
 
 class DynamoDBClient(DatabaseClient):
     """DynamoDB client management"""
     
-    def __init__(self, local: bool = False):
+    def __init__(self, local: bool = False, stage: str = constants.STAGE_LOCAL):
         self.local = local
+        self.stage = stage
         self._client = None
         self._resource = None
         self._tables = {}  # Cache for table instances

@@ -138,29 +138,26 @@ def extract_transcript():
 
 @test_bp.route('/feed_reader', methods=['GET'])
 def test_feed_reader():
+    logger.info("test_feed_reader route")
     feed_url = request.args.get('feed_url')
     if not feed_url:
         return jsonify({'error': 'feed_url parameter is required'}), 400
 
-    def background_process():
-        try:
-            feed_reader.process_stage1_rssapp("TEST", "ecommerce", feed_url)
-            feed_reader.process_stage2()
-            feed_reader.process_stage3()
-            logger.info(f"Feed reader and audio generation completed for feed_url: {feed_url}")
-        except Exception as e:
-            logger.error(f"Error in background feed processing: {str(e)}", exc_info=True)
-
-    # Start the background thread
-    Thread(target=background_process).start()
+    try:
+        feed_reader.process_stage1_rssapp("TEST", "ecommerce", feed_url)
+        feed_reader.process_stage2()
+        feed_reader.process_stage3()
+        logger.info(f"Feed reader and audio generation completed for feed_url: {feed_url}")
+    except Exception as e:
+        logger.error(f"Error in background feed processing: {str(e)}", exc_info=True)
 
     return jsonify({'message': 'Feed reader and audio generation process started in the background'}), 202
-
 
 @test_bp.route('/s3_public_url', methods=['GET'])
 def s3_public_url():
     url = request.args.get('url')
-    return utilities.generate_audio_url_public(url)
+    result = utilities.generate_audio_url_public(url)
+    return jsonify({'url': result})
 
 # Endpoint to generate the personalised greeting / intro audio message at the begining of the podcast
 @test_bp.route('/intro_audio', methods=['GET'])

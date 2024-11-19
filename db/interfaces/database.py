@@ -123,17 +123,7 @@ class UserFeedRepository(ABC):
     def bulk_create(self, user_feeds: List[Dict[str, Any]]) -> None:
         """Bulk create user feeds"""
         pass
-        
-    @abstractmethod
-    def get_user_feed(
-        self, 
-        user_id: str,
-        limit: int = 20,
-        offset: int = 0
-    ) -> List[Dict[str, Any]]:
-        """Get user's feed articles"""
-        pass
-        
+                
     @abstractmethod
     def delete_old_feeds(
         self,
@@ -141,6 +131,23 @@ class UserFeedRepository(ABC):
         before_date: str
     ) -> int:
         """Delete user's old feed entries"""
+        pass
+
+    @abstractmethod
+    def get_latest_news(
+        self,
+        user_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 20,
+        preferred_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Get latest unsent news for user"""
+        pass
+
+    @abstractmethod
+    def mark_feeds_as_sent(self, user_id: str, article_ids: List[str]) -> None:
+        """Mark feeds as sent to user"""
         pass
 
 class FeedBatchRepository(ABC):

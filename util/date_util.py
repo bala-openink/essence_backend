@@ -1,5 +1,6 @@
 import datetime
 import dateutil.parser as date_parser
+from typing import Union
 from lib.log import logger
 
 def format_date_published(date_string):
@@ -37,3 +38,11 @@ def is_older_than_few_years(date_string, years=10):
         logger.error(f"Invalid date format: {date_string}")
         return False
 
+def parse_iso_date(date_value: Union[str, datetime.datetime]) -> datetime.datetime:
+    """Convert either a string or datetime to a UTC datetime object"""
+    if isinstance(date_value, str):
+        return datetime.datetime.fromisoformat(date_value).astimezone(datetime.timezone.utc)
+    elif isinstance(date_value, datetime.datetime):
+        return date_value.astimezone(datetime.timezone.utc)
+    else:
+        raise ValueError(f"Unsupported date type: {type(date_value)}")
