@@ -88,12 +88,12 @@ def deduplicate_articles(articles):
         if i in original_articles:
             for j in range(i + 1, len(articles)):
                 if j in original_articles and similarity_matrix[i][j] > 0.80:
-                    logger.debug(f"Duplicate found: {articles[i]['title']} and {articles[j]['title']} with similarity {similarity_matrix[i][j]:.4f}")
+                    logger.info(f"Duplicate found: {articles[i]['title']} and {articles[j]['title']} with similarity {similarity_matrix[i][j]:.4f}")
                     # Store only essential fields for duplicate article
                     if articles[i]['date_published'] < articles[j]['date_published']:
                         duplicate_articles.append({
                             'id': articles[i]['id'],
-                            'status': 'duplicate_article',
+                            'processing_status': 'duplicate_article',
                             'comments': f"duplicate of {articles[j]['id']}"
                         })
                         original_articles.remove(i)
@@ -102,7 +102,7 @@ def deduplicate_articles(articles):
                     else:
                         duplicate_articles.append({
                             'id': articles[j]['id'],
-                            'status': 'duplicate_article',
+                            'processing_status': 'duplicate_article',
                             'comments': f"duplicate of {articles[i]['id']}"
                         })
                         original_articles.remove(j)

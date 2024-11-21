@@ -9,6 +9,7 @@ class TestStringUtil(unittest.TestCase):
         # Test valid URL
         self.assertEqual(extract_domain("https://www.example.com/bla/bla"), "example.com")
         self.assertEqual(extract_domain("https://example.com/bla/bla"), "example.com")
+        self.assertEqual(extract_domain("example.com/"), "example.com")
         # Test invalid URL
         self.assertIsNone(extract_domain("invalid-url"))
 

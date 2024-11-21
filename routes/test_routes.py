@@ -4,13 +4,13 @@ import uuid
 from db.factory import db_factory
 from services import utilities
 from util import llm_util, feed_util
-from services import feed_reader
+from services import feed_processor
 from services import podcaster
 from models.audio_story_request import AudioStoryRequest
 from io import BytesIO
 from threading import Thread
 from werkzeug.exceptions import BadRequest
-
+import constants
 test_bp = Blueprint('test', __name__)
 
 article_repo = db_factory.get_article_repository()
@@ -97,10 +97,12 @@ def extract_transcript():
     if not url:
         return jsonify({'error': 'URL parameter is required'}), 400
 
+    two_speakers = request.args.get('two_speakers', default='true').lower() == 'true'
+    model = request.args.get('model', default=constants.DEFAULT_MODEL)
+
     transcript = feed_util.extract_transcript(url)
     if transcript:
         transcript = transcript.replace('\n', ' ').strip()
-        logger.debug(f"Transcript: {transcript}")
 
     if not transcript:
         return jsonify({'error': 'Failed to extract transcript'}), 500
@@ -110,7 +112,7 @@ def extract_transcript():
         'url': url,
         'full_text': transcript
     }
-    summaries_and_categories = llm_util.summarize_text_and_extract_categories(transcript)
+    summaries_and_categories = llm_util.summarize_text_and_extract_categories(transcript, model)
     if summaries_and_categories:
         article['summary_50'] = summaries_and_categories.get('summary_50')
         article['summary_200'] = summaries_and_categories.get('summary_200')
@@ -123,35 +125,51 @@ def extract_transcript():
         length="short",
         language="en",
         region="UK",
-        two_speakers=False,
+        two_speakers=two_speakers,
         add_background=False,
         user_name=None
     )
-    audio_summary_segment = podcaster.generate_audio_story(audio_request)
+    audio_summary_segment = podcaster.generate_audio_story(audio_request, model)
 
-    audio_summary = BytesIO()
-    audio_summary_segment.export(audio_summary, format="mp3")
-    audio_summary.seek(0)
+    if audio_summary_segment:
+        audio_summary = BytesIO()
+        audio_summary_segment.export(audio_summary, format="mp3")
+        audio_summary.seek(0)
 
-    # Return the audio summary as an mp3 file
-    return send_file(audio_summary, mimetype='audio/mpeg', as_attachment=True, download_name='audio_summary.mp3')
+        # Return the audio summary as an mp3 file
+        return send_file(audio_summary, mimetype='audio/mpeg', as_attachment=True, download_name='audio_summary.mp3')
+    else:
+        return jsonify({'error': 'Failed to generate audio summary'}), 500
 
-@test_bp.route('/feed_reader', methods=['GET'])
-def test_feed_reader():
-    logger.info("test_feed_reader route")
+@test_bp.route('/process_feed', methods=['GET'])
+def process_feed():
+    logger.info("process_feed route")
     feed_url = request.args.get('feed_url')
     if not feed_url:
         return jsonify({'error': 'feed_url parameter is required'}), 400
 
     try:
-        feed_reader.process_stage1_rssapp("TEST", "ecommerce", feed_url)
-        feed_reader.process_stage2()
-        feed_reader.process_stage3()
+        feed_processor.process_stage1_rssapp("TEST", "ecommerce", feed_url)
+        feed_processor.process_stage2()
+        feed_processor.process_stage3()
         logger.info(f"Feed reader and audio generation completed for feed_url: {feed_url}")
+    except Exception as e:
+        logger.error(f"Error in background feed processing: {str(e)}", exc_info=True)
+    return jsonify({'message': 'Feed reader and audio generation process started in the background'}), 202
+
+@test_bp.route('/force_process_feed', methods=['GET'])
+def force_process_feed():
+    logger.info("force_process_feed route")
+
+    try:
+        feed_processor.process_stage2(force=True)
+        feed_processor.process_stage3()
+        logger.info("force_process_feed completed")
     except Exception as e:
         logger.error(f"Error in background feed processing: {str(e)}", exc_info=True)
 
     return jsonify({'message': 'Feed reader and audio generation process started in the background'}), 202
+
 
 @test_bp.route('/s3_public_url', methods=['GET'])
 def s3_public_url():

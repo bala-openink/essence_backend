@@ -105,6 +105,7 @@ class OpenSearchClient(DatabaseClient):
                     "industry": {"type": "text"},
                     "region": {"type": "keyword"},
                     "domain": {"type": "keyword"},
+                    "importance_score": {"type": "float"},
                     "single_news_item": {"type": "boolean"},
                     "categories": {"type": "keyword"},
                     "audio_summary": {"type": "text"},

@@ -135,11 +135,10 @@ def prepare_for_transport(article):
         result["audio_summary"]
     )
     
-    # Now we can use dict.pop with two arguments
+    # Remove fields that are not needed for transport
     result.pop("full_text", None)
     result.pop("audio_summary_url", None)
     result.pop("summary_vector", None)
-    result.pop("user_id", None)
             
     return result
 
@@ -193,7 +192,7 @@ def get_latest_news_v2(
 ) -> List[dict]:
     start_time = time.time()
 
-    start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)
+    start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
     end_date = datetime.datetime.now(datetime.timezone.utc)
     
     articles = _fetch_articles_with_retry(

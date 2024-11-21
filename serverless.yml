@@ -27,12 +27,7 @@ provider:
   httpApi:
     cors:
       allowedOrigins:
-        - http://localhost:3000
-        - https://getessence.app
-        - https://www.getessence.app
-        - https://main.d1lkh6gn3xrn6w.amplifyapp.com
-        - https://dev.d1vn9ca3svg0a2.amplifyapp.com
-        - https://develop.d2f7pba6ta58v6.amplifyapp.com
+        - '*'
       allowedHeaders:
         - Content-Type
         - Authorization
@@ -100,8 +95,16 @@ functions:
       name: ocsbackend
     events:
       - httpApi: 
+          path: /internal/{any+}
+          method: '*'
+          cors: false
+      - httpApi:
+          path: /test/{any+}
+          method: '*'
+          cors: false
+      - httpApi:
           path: /{any+}
-          method: '*' 
+          method: '*'
 
   parseFeedsScheduled:
     image:

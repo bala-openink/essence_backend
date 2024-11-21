@@ -1,3 +1,6 @@
 STAGE_LOCAL = 'local'
 STAGE_DEV = 'dev'
-STAGE_LIVE = 'live'
+STAGE_LIVE  = 'live'
+MODEL_GPT_4O_MINI = 'gpt-4o-mini'
+MODEL_GPT_4O = 'gpt-4o'
+DEFAULT_MODEL = MODEL_GPT_4O_MINI

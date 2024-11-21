@@ -28,7 +28,8 @@ def _create_feed_entry(user, article, is_from_preferred_source):
         'source_name': article.get('source_name'),
         'type': article.get('type'),
         'is_from_preferred_source': is_from_preferred_source,
-        'score': article.get('score')
+        'score': article.get('score'),
+        'importance_score': article.get('importance_score')
     }
 
 def _create_user_feed(user, articles):

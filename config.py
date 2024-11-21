@@ -7,6 +7,9 @@ STAGE = os.environ.get('STAGE', 'local')
 JWT_EXPIRATION_DELTA=604800
 
 SKIP_EXPENSIVE_OPERATIONS = os.environ.get('SKIP_EXPENSIVE_OPERATIONS', 'false').lower() == 'true'
+SKIP_SUMMARY_CREATION = os.environ.get('SKIP_SUMMARY_CREATION', 'false').lower() == 'true'
+SKIP_AUDIO_GENERATION = os.environ.get('SKIP_AUDIO_GENERATION', 'false').lower() == 'true'
+
 ADMIN_EMAIL = 'balaforfriends@gmail.com'
 
 DEFAULT_USERNAME = "default"

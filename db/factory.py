@@ -89,6 +89,16 @@ class DatabaseFactory:
             )
         return self._repositories[key]
 
+    def get_article_repository_old(self) -> OpenSearchArticleRepository:
+        """Get OpenSearch Article repository instance"""
+        key = 'opensearch_article'
+        if key not in self._repositories:
+            self._repositories[key] = OpenSearchArticleRepository(
+                self.opensearch_client.get_client(),
+                f"{config.OPENSEARCH_INDEX}"
+            )
+        return self._repositories[key]
+
 
     #########################################################
     #  PostgreSQL Repositories

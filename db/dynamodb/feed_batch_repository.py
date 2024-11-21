@@ -37,60 +37,50 @@ class DynamoDBFeedBatchRepository(FeedBatchRepository):
         error_msg: Optional[str] = None
     ) -> bool:
         try:
-            update_expr = []
-            expr_values = {}
-
             if batch_id is None:
                 return False
-            
+
+            update_parts = []
+            expr_values = {}
+            expr_names = {'#s': stage}
+
+            # For stage1, increment completed_feeds
             if stage == 'stage1':
-                update_expr.append('SET completed_feeds = completed_feeds + :one')
+                update_parts.append('completed_feeds = if_not_exists(completed_feeds, :zero) + :one')
+                expr_values[':zero'] = 0
                 expr_values[':one'] = 1
 
-                if result:
-                    update_expr.extend([
-                        'results.total_articles = results.total_articles + :p',
-                        'results.total_skipped = results.total_skipped + :s'
-                    ])
-                    expr_values.update({
-                        ':p': result.get('processed', 0),
-                        ':s': result.get('skipped', 0)
-                    })
+            # Update stage stats
+            if result:
+                update_parts.append('#s = :stats')
+                expr_values[':stats'] = {
+                    'processed': result.get('processed', 0),
+                    'skipped': result.get('skipped', 0),
+                    'errors': result.get('errors', [])
+                }
 
-                    if result.get('errors'):
-                        update_expr.append('results.error_articles = list_append(if_not_exists(results.error_articles, :empty), :errors)')
-                        expr_values.update({
-                            ':errors': result['errors'],
-                            ':empty': []
-                        })
-
-            else:  # stage2 or stage3
-                if result:
-                    update_expr.extend([
-                        f'{stage}.processed = if_not_exists({stage}.processed, :zero) + :p',
-                        f'{stage}.skipped = if_not_exists({stage}.skipped, :zero) + :s'
-                    ])
-                    expr_values.update({
-                        ':p': result.get('processed', 0),
-                        ':s': result.get('skipped', 0),
-                        ':zero': 0
-                    })
-
+            # Add error
             if error_msg:
                 error_info = {
                     'error': error_msg,
                     'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
                 }
-                update_expr.append(f'{stage}.errors = list_append(if_not_exists({stage}.errors, :empty), :errors)')
-                expr_values.update({
-                    ':errors': [error_info],
-                    ':empty': []
-                })
+                if not result:
+                    update_parts.append('#s = :init')
+                    expr_values[':init'] = {
+                        'processed': 0,
+                        'skipped': 0,
+                        'errors': [error_info]
+                    }
+                else:
+                    update_parts.append('#s.errors = list_append(#s.errors, :error)')
+                    expr_values[':error'] = [error_info]
 
-            if update_expr:
+            if update_parts:
                 self._table.update_item(
                     Key={'id': batch_id},
-                    UpdateExpression=', '.join(update_expr),
+                    UpdateExpression='SET ' + ', '.join(update_parts),
+                    ExpressionAttributeNames=expr_names,
                     ExpressionAttributeValues=expr_values
                 )
             return True

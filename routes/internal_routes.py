@@ -31,6 +31,7 @@ user_repository = db_factory.get_user_repository()
 user_listen_history_repo = db_factory.get_generic_repository("user_listen_history")
 article_repo = db_factory.get_article_repository()
 feed_repo = db_factory.get_generic_repository("feed")
+user_feed_repo = db_factory.get_user_feed_repository()
 
 @internal_bp.route("/generate_custom_podcast", methods=["POST"])
 def generate_custom_podcast():
@@ -668,11 +669,15 @@ def all_users():
         # Get optional parameters
         status = request.args.get("status", default="verified")
         limit = request.args.get("limit", default=None, type=int)
+        email = request.args.get("email", default=None)
         all_attributes = (
             request.args.get("all_attributes", default="false").lower() == "true"
         )
 
-        users = user_repository.list_by_status(status)
+        if email:
+            users = [user_repository.get_by_email(email)]
+        else:
+            users = user_repository.list_by_status(status)
 
         # Extract desired fields
         results = []
@@ -729,9 +734,9 @@ def delete_articles():
             
         # Convert to ISO format using parse_iso_date
         if start_date:
-            start_date = user_news.parse_iso_date(start_date).isoformat()
+            start_date = date_util.parse_iso_date(start_date).isoformat()
         if end_date:
-            end_date = user_news.parse_iso_date(end_date).isoformat()
+            end_date = date_util.parse_iso_date(end_date).isoformat()
             
         logger.info(f"Deleting articles between {start_date} and {end_date} - Request ID: {request_id}")
         
@@ -836,4 +841,93 @@ def list_users():
     except Exception as e:
         logger.error(f"Error fetching users: {str(e)} - Request ID: {request_id}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
+@internal_bp.route("/rank_articles_importance", methods=["GET"])
+def rank_articles_importance():
+    request_id = str(uuid.uuid4())
+    logger.info(f"rank_articles_importance route - Request ID: {request_id}")
+    try:
+        # Get date parameters from query string
+        start_date_str = request.args.get("start_date")
+        end_date_str = request.args.get("end_date")
+
+        # Parse dates with defaults if not provided
+        start_date = date_util.parse_iso_date(start_date_str) if start_date_str else datetime.now() - timedelta(days=1) 
+        end_date = date_util.parse_iso_date(end_date_str) if end_date_str else datetime.now()
+
+        # Fetch articles from user_feed table
+        articles = user_feed_repo.get_articles_between_dates(start_date, end_date)
+        if not articles:
+            return jsonify({"message": "No articles found in the specified date range"}), 404
+
+        # Prepare article summaries for LLM
+        articles_text = "\n\n".join([
+            f"Article ID: {article['article_id']}\nTitle: {article.get('title', 'No title')}\n"
+            f"Summary: {article.get('summary_200', 'No summary')}"
+            for article in articles
+        ])
+
+        # Prepare prompt for importance ranking
+        prompt = """
+        You are an expert news analyst. Review these articles and rank them by importance among each other
+        on a scale of 1-100, considering:
+        - Economic and business impact
+        - Industry disruption potential
+        - Scale (financial amounts, reach)
+        - Relevance to key stakeholders
+        - Timeliness and urgency
+
+        Return only a valid JSON object with article IDs and scores without any prefix or suffix, in this format:
+        {
+            "article_rankings": [
+                {"article_id": "id1", "importance_score": 75},
+                {"article_id": "id2", "importance_score": 23}
+            ]
+        }
+        """
+
+        # Get rankings from LLM
+        response = llm_util.chat_with_openai(articles_text, prompt)
+
+        try:
+            rankings = json.loads(response)
+            logger.debug(f"Rankings: {rankings}")
+
+            # Print article titles and importance scores for logging
+            for ranking in rankings["article_rankings"]:
+                article = next((a for a in articles if a["article_id"] == ranking["article_id"]), None)
+                if article:
+                    logger.info(f"Article: {article.get('title', 'No title')} - Importance Score: {ranking['importance_score']}")
+            if not isinstance(rankings, dict) or "article_rankings" not in rankings:
+                raise ValueError("Invalid response format")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Error parsing LLM response: {str(e)} - Response: {response}")
+            return jsonify({"error": "Failed to parse importance rankings"}), 500
+
+        # Update articles with importance scores
+        try:
+            article_scores = [
+                {
+                    "article_id": ranking["article_id"],
+                    "importance_score": ranking["importance_score"]
+                }
+                for ranking in rankings["article_rankings"]
+            ]
+            
+            # Bulk update the user_feed table
+            user_feed_repo.update_importance_scores(article_scores)
+
+            return jsonify({
+                "message": "Successfully updated importance scores",
+                "articles_processed": len(article_scores),
+                "rankings": rankings["article_rankings"]
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error updating importance scores: {str(e)}")
+            return jsonify({"error": "Failed to update importance scores"}), 500
+
+    except Exception as e:
+        logger.error(f"Error in rank_articles_importance: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 

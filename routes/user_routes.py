@@ -1,5 +1,5 @@
 from io import BytesIO
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from werkzeug.exceptions import BadRequest, Unauthorized
 from lib.log import logger
 from lib.auth import generate_token, verify_token, send_verification_email, generate_verification_code, revoke_token, is_token_about_to_expire, handle_token_refresh
@@ -10,6 +10,7 @@ from services import utilities
 from models.user import User
 from db.factory import db_factory
 from util import string_util
+from routes.decorators import custom_jwt_required
 
 user_bp = Blueprint('user', __name__)
 user_repository = db_factory.get_user_repository()
@@ -191,10 +192,11 @@ def verify_token_endpoint():
         }), 401
 
 @user_bp.route('/update_preferences', methods=['POST'])
-@jwt_required()
+@custom_jwt_required()
 def update_preferences():
     logger.info("update_preferences route")
-    user_id = get_jwt_identity()
+    # Use user_id from kwargs if bypassed
+    user_id = getattr(g, 'user_id', None) or get_jwt_identity()
 
     if not user_id:
         raise BadRequest("User ID not found")
@@ -207,7 +209,7 @@ def update_preferences():
     if not data:
         raise BadRequest("Missing preferences")
     
-    preferences_text = data.get('preferences')
+    preferences_text = data.get('preferences_text')
     first_name = data.get('first_name')
     country = data.get('country')
     language = data.get('language')
@@ -233,21 +235,19 @@ def update_preferences():
         if isinstance(news_sources, list):
             for source in news_sources:
                 domain = string_util.extract_domain(source)
-                if domain:
+                if domain and domain not in user.news_sources:  # Check if domain doesn't exist
                     user.news_sources.append(domain)
         else:
             domain = string_util.extract_domain(news_sources)
-            if domain:
+            if domain and domain not in user.news_sources:  # Check if domain doesn't exist
                 user.news_sources.append(domain)
 
     if(first_name or country or language or news_sources):
         user_repository.update(user)
 
-    if not preferences_text:
-        raise BadRequest("Missing preferences")
-
-    # Trigger background task to update user preferences
-    utilities.background_task('services.user_management.update_user_preferences', user_id, preferences_text)
+    if preferences_text:
+        # Trigger background task to update user preferences
+        utilities.background_task('services.user_management.update_user_preferences', user_id, preferences_text)
 
     return jsonify({"message": "Preferences update initiated"}), 202
 

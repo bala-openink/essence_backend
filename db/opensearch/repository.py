@@ -22,7 +22,6 @@ class OpenSearchRepository(GenericRepository[Dict[str, Any]]):
             response = self._client.get(index=self._index, id=id)
             return response['_source']
         except Exception as e:
-            logger.error(f"Error getting document from OpenSearch: {str(e)}")
             return None
 
     def add(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:

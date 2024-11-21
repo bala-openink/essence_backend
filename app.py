@@ -15,7 +15,7 @@ import json
 import serverless_wsgi
 import traceback
 
-from services import summarizer, podcaster, feed_reader, user_news, utilities
+from services import feed_processor, summarizer, podcaster, user_news, utilities
 from routes.user_routes import user_bp
 from routes.test_routes import test_bp
 from routes.public_routes import public_bp
@@ -38,15 +38,7 @@ jwt = JWTManager(app)
 
 # Configure CORS to be completely permissive
 CORS(app, resources={r"/*": {
-    "origins": [
-        "https://getessence.app",
-        "http://localhost:3000",
-        "http://192.168.2.197:3000",
-        "https://www.getessence.app",
-        "https://main.d1lkh6gn3xrn6w.amplifyapp.com",
-        "https://dev.d1vn9ca3svg0a2.amplifyapp.com",
-        "https://develop.d2f7pba6ta58v6.amplifyapp.com"
-    ],
+    "origins": "*",
     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
     "expose_headers": ["Content-Type", "Authorization"]
@@ -171,11 +163,11 @@ def audio_story():
 # To be run as a scheduled job few times a day
 @app.route('/parse_feeds', methods=['GET'])
 def parse_all_feeds():
-    return feed_reader.parse_feeds()
+    return feed_processor.parse_feeds()
 
 def parse_feeds_scheduled(event, context):
     logger.info("Scheduled parse_feeds job started")
-    result = feed_reader.parse_feeds()
+    result = feed_processor.parse_feeds()
     logger.info(f"Scheduled parse_feeds job completed with result: {result}")
     return {
         'statusCode': 200,
@@ -187,7 +179,7 @@ def execute_background_task(task_path, args=None, kwargs=None):
     Dynamically executes a function from a module using its string path.
     
     Args:
-        task_path (str): Dot-separated path to the function (e.g., 'services.feed_reader.process_stage1')
+        task_path (str): Dot-separated path to the function (e.g., 'services.feed_processor.process_stage1')
         args (list, optional): Positional arguments to pass to the function
         kwargs (dict, optional): Keyword arguments to pass to the function
     

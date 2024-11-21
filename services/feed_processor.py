@@ -2,7 +2,7 @@ import requests
 from io import BytesIO
 import datetime  # Add this import at the top
 import hashlib  # Add this import at the top
-from config import ADMIN_EMAIL, SKIP_EXPENSIVE_OPERATIONS
+import config
 import random
 
 from services import utilities
@@ -56,12 +56,7 @@ def parse_feeds():
             'total_feeds': len(feeds),
             'completed_feeds': 0,
             'start_time': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            'status': 'in_progress',
-            'results': {
-                'total_articles': 0,
-                'total_skipped': 0,
-                'error_articles': []
-            }
+            'status': 'in_progress'
         }
         feed_batch_repo.create_batch(batch_record)
 
@@ -69,7 +64,7 @@ def parse_feeds():
         for feed in feeds:
             try:
                 # Include batch_id in the background task parameters
-                utilities.background_task('services.feed_reader.process_stage1', feed, batch_id)
+                utilities.background_task('services.feed_processor.process_stage1', feed, batch_id)
                 logger.info(f"Started background task for feed {feed['id']} in batch {batch_id}")
             except Exception as e:
                 error_msg = f"Error starting background task for feed {feed['id']}: {str(e)}"
@@ -115,6 +110,7 @@ def process_stage1(feed, batch_id=None):
         # Check if all feeds are processed
         batch = feed_batch_repo.get_batch(batch_id) if batch_id else None
         if batch and batch['completed_feeds'] >= batch['total_feeds']:
+            logger.info(f"Completed processing stage1 for batch {batch_id}")
             # Mark stage1 as complete
             feed_batch_repo.mark_stage_complete(
                 batch_id=batch_id,
@@ -125,13 +121,14 @@ def process_stage1(feed, batch_id=None):
             # Send email with processing summary
             if batch:
                 send_processing_summary_email("stage1",
-                    batch['results']['total_articles'],
-                    batch['results']['total_skipped'],
-                    batch['results']['error_articles']
+                    batch.get('stage1', {}).get('processed', 0),
+                    batch.get('stage1', {}).get('skipped', 0),
+                    batch.get('stage1', {}).get('errors', [])
                 )
 
+
             # Trigger stage2
-            utilities.background_task('services.feed_reader.process_stage2', batch_id)
+            utilities.background_task('services.feed_processor.process_stage2', batch_id)
         
         return
 
@@ -177,7 +174,6 @@ def update_batch_status(batch_id, stage, result=None, error_msg=None, feed=None)
             result=result,
             error_msg=error_info
         )
-
         if success:
             logger.info(f"Updated batch {batch_id} for {stage}")
         else:
@@ -231,7 +227,7 @@ def process_stage1_feed_item(item, source_name, category):
     if article['processing_status'] == 'started':
         extract_and_save_transcript(article)
     
-    if not SKIP_EXPENSIVE_OPERATIONS:
+    if not config.SKIP_SUMMARY_CREATION:
         if article['processing_status'] == 'transcript_extracted':
             summarize_and_save(article)
     else:
@@ -248,7 +244,7 @@ def get_or_create_article(article_id, item, source_name, category):
         existing_article = article_repo.get(article_id)
         
         if existing_article:
-            logger.info(f"Article {article_id} already exists. Current status: {existing_article['processing_status']}")
+            logger.info(f"Article {article_id} already exists. Current status: {existing_article.get('processing_status')}")
             return existing_article
         
         # Handle date_published
@@ -337,7 +333,7 @@ def summarize_and_save(article):
         logger.error(f"Error in summarize_and_save: {str(e)}")
         raise
 
-def process_stage2(batch_id=None):
+def process_stage2(batch_id=None, force=False):
     """
     Stage2:
     Deduplication and creating audio summaries.
@@ -347,26 +343,39 @@ def process_stage2(batch_id=None):
         logger.info(f"Processing batch {batch_id} for stage2")
         batch = feed_batch_repo.get_batch(batch_id) if batch_id else None
         
+        # NOTE: Be careful about using force=True, as it will reprocess lot of articles
+        if force:
+            processing_status = "audio_summary_generated"
+        else:
+            processing_status = "summaries_extracted"
+
         if batch:
-            articles_to_process = article_repo.query_by_status('summaries_extracted', start_date=batch['start_time'])
+            articles_to_process = article_repo.query_by_status(processing_status, start_date=batch['start_time'], limit=1000)
         else:   
-            articles_to_process = article_repo.query_by_status('summaries_extracted', limit=1000)
+            articles_to_process = article_repo.query_by_status(processing_status, limit=1000)
         
-        logger.info(f"Found {len(articles_to_process)} articles with 'summaries_extracted'")
+        logger.info(f"Found {len(articles_to_process)} articles with '{processing_status}'")
         
         # Perform deduplication
         duplicate_articles, deduplicated_articles = vector_util.deduplicate_articles(articles_to_process)
         article_repo.bulk_update(duplicate_articles)
 
+        # Rank articles by importance
+        # article_scores = llm_util.rank_articles_by_importance_batched(deduplicated_articles)
+        # if article_scores:
+        #     article_repo.bulk_update_partial(article_scores)
+
         # Start processing first batch
-        utilities.background_task('services.feed_reader.generate_audio_summaries_batch', 
+        utilities.background_task('services.feed_processor.generate_audio_summaries_batch', 
                                 batch_id, 
                                 start_date=batch['start_time'] if batch else None)
         
         logger.info(f"Initiated audio summary generation for stage2 processing for batch {batch_id}")
                 
     except Exception as e:
-        logger.error(f"Error processing completed batch {batch_id}: {str(e)}")
+        error_msg = f"Error processing stage2 for batch {batch_id}: {str(e)}"
+        logger.error(error_msg)
+        update_batch_status(batch_id, "stage2", error_msg=error_msg)
 
 def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=100):
     """
@@ -398,19 +407,20 @@ def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=10
                 )
 
             # Trigger stage3
-            utilities.background_task('services.feed_reader.process_stage3', batch_id)
+            utilities.background_task('services.feed_processor.process_stage3', batch_id)
             return
         
         logger.info(f"Processing batch of {len(articles_to_process)} articles")
         
         processed_count = 0
         error_count = 0
+        error_articles = []
         
         for article in articles_to_process:
             try:
                 # Verify article is still in correct state before processing
                 current_article = article_repo.get(article['id'])
-                if current_article['processing_status'] != 'summaries_extracted':
+                if current_article and current_article['processing_status'] != 'summaries_extracted':
                     continue
                 
                 # Update status to prevent other processes from picking it up
@@ -424,6 +434,10 @@ def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=10
                 error_msg = f"Error processing article {article['id']}: {str(e)}"
                 logger.error(error_msg)
                 error_count += 1
+                error_articles.append({
+                    'url': article.get('url', 'Unknown'),
+                    'error': error_msg
+                })
                 
                 # Reset article status and record error
                 article['processing_status'] = 'summaries_extracted'
@@ -435,12 +449,12 @@ def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=10
         result = {
             'processed': processed_count,
             'skipped': len(articles_to_process) - processed_count - error_count,
-            'errors': error_count
+            'errors': error_articles
         }
         update_batch_status(batch_id, "stage2", result=result)
         
         # Trigger next batch
-        utilities.background_task('services.feed_reader.generate_audio_summaries_batch', 
+        utilities.background_task('services.feed_processor.generate_audio_summaries_batch', 
                                 batch_id, 
                                 start_date=start_date)
         
@@ -452,34 +466,42 @@ def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=10
 
 def generate_and_save_audio_summary(article, previous_article=None):
     try:
+        logger.info(f"Generating audio summary for article {article['id']}")
         # Randomly set two_speakers to True or False
         two_speakers = random.random() < 0.3
 
         # TODO - No user specific customizations are happening now. 
         audio_request = AudioStoryRequest(
             id=article['id'],
-            text_summary=article['summary_200'],
-            url=article['url'],
+            text_summary=article.get('summary_200'),
+            url=article.get('url'),
             length="short",
             language="en",
             region="UK",
             two_speakers=two_speakers,
             add_background=True,
             user_name=None,
-            previous_article=previous_article['summary_50'] if previous_article else None
+            previous_article=previous_article.get('summary_50') if previous_article else None
         )
         audio_summary = podcaster.generate_audio_story(audio_request)
         
-        # Build the streaming response object and upload to S3
-        output = BytesIO()
-        audio_summary.export(output, format="mp3")
+        if audio_summary:
+            # Build the streaming response object and upload to S3
+            output = BytesIO()
+            audio_summary.export(output, format="mp3")
 
-        s3_url = utilities.upload_audiostory_to_s3(audio_request, output)
+            s3_url = utilities.upload_audiostory_to_s3(audio_request, output)
+            article['audio_summary'] = s3_url
+            
+            article['processing_status'] = 'audio_summary_generated'
+            article_repo.addOrUpdate(article)
+            logger.info(f"Generated and saved audio summary for article {article['id']}")
+            return
         
-        article['audio_summary'] = s3_url
-        article['processing_status'] = 'audio_summary_generated'
-        article_repo.addOrUpdate(article)
-        logger.info(f"Generated and saved audio summary for article {article['id']}")
+        if config.SKIP_AUDIO_GENERATION:
+            article['processing_status'] = 'audio_summary_generated'
+            article_repo.addOrUpdate(article)
+            logger.info(f"Skipping audio generation for article {article['id']}")
     except Exception as e:
         logger.error(f"Error in generate_and_save_audio_summary: {str(e)}")
         # Reset article status and record error
@@ -504,7 +526,7 @@ def process_stage3(batch_id=None, user_offset=0, total_users=0, batch_size=10):
         # Trigger next batch
         next_offset = user_offset + batch_size
         if next_offset < total_users:
-            utilities.background_task('services.feed_reader.process_stage3', 
+            utilities.background_task('services.feed_processor.process_stage3', 
                                     batch_id, 
                                     user_offset=next_offset,
                                     total_users=total_users)
@@ -537,24 +559,16 @@ def send_processing_summary_email(processing_stage, total_articles, total_skippe
     subject = f"Env::{stage}, Essence Feed Processing Summary, Stage::{processing_stage}"
     body = f"""
         Feed processing completed.
-        """
-    if processing_stage == "stage1":
-        body += "Stage 1 :: Extracted transcripts, summaries, categories, and other metadata from enabled feeds."
-    elif processing_stage == "stage2":
-        body += "Stage 2 :: Deduplication and creating audio summaries for processed articles."
-    elif processing_stage == "stage3":
-        body += "Stage 3 :: Creating user feeds based on processed articles."
-    body += f"""
 
-        Total articles processed: {total_articles}
-        Total articles skipped: {total_skipped}
-        Total articles with errors: {len(error_articles)}
+        Total {"articles" if processing_stage == "stage1" or processing_stage == "stage2" else "users"} processed: {total_articles}
+        Total {"articles" if processing_stage == "stage1" or processing_stage == "stage2" else "users"} skipped: {total_skipped}
+        Total {"articles" if processing_stage == "stage1" or processing_stage == "stage2" else "users"} with errors: {len(error_articles)}
 
-        Articles with errors:
+        {"Articles" if processing_stage == "stage1" or processing_stage == "stage2" else "Users"} with errors:
         """
     
     for article in error_articles:
         body += f"- URL: {article['url']}\n  Error: {article['error']}\n"
 
-    send_email(ADMIN_EMAIL, subject, body)
+    send_email(config.ADMIN_EMAIL, subject, body)
 

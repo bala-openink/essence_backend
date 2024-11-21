@@ -2,6 +2,7 @@ import hashlib
 from io import BytesIO
 from typing import Dict
 import random
+import re
 
 from werkzeug.exceptions import BadRequest
 
@@ -12,6 +13,8 @@ from models.audio_story_request import AudioStoryRequest
 from lib.log import logger
 from db.factory import db_factory
 from util import audio_util, llm_util
+import config
+import constants
 
 # Dictionary containing the transition messages
 category_transitions = {
@@ -57,7 +60,7 @@ def generate_hash(text_summary: str) -> str:
     return hashlib.sha256(text_summary.encode()).hexdigest()
 
 
-def generate_audio_story(request: AudioStoryRequest):
+def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFAULT_MODEL):
     text_summary = request.text_summary
     if text_summary is None:
         raise BadRequest("Text summary is provided. Cannot continue")
@@ -79,7 +82,12 @@ def generate_audio_story(request: AudioStoryRequest):
         user_name=request.user_name,
         previous_article=request.previous_article,
         new_instructions=request.new_instructions,
+        model=model,
     )
+
+    if config.SKIP_AUDIO_GENERATION:
+        return
+
 
     # Step 2: Convert Text to Audio
     audio_segments = []
@@ -96,7 +104,9 @@ def generate_audio_story(request: AudioStoryRequest):
             continue
             
         # Hack to remove the extra prefixes added by GPT
-        cleaned_text = text.split(": ", 1)[1] if text.startswith(("Emily:", "Harry:")) else text
+        cleaned_text = text.strip()
+        # Remove speaker names from start or end using regex
+        cleaned_text = re.sub(r'^(?:Emily|Harry|male|female)[:\s]*|[:\s]*(?:Emily|Harry|male|female)$', '', cleaned_text, flags=re.IGNORECASE)
         audio_segment = generate_audio(speaker, cleaned_text, request.language)
         audio_segments.append(audio_segment)
 
@@ -213,45 +223,43 @@ def generate_conversation(
     user_name: str | None,
     previous_article: str | None,
     new_instructions: str | None,
+    model: str = constants.DEFAULT_MODEL,
 ):
     word_count = 40 if length == "short" else 500
 
-    transition_suggestion = transition_phrases[random.randint(1, 15)]
+    # transition_suggestion = transition_phrases[random.randint(1, 15)]
+
+    two_speakers_prompt = (
+        "Convert the following news summary into a podcast segment between Harry and Emily. Important guidelines:"
+        "\n1. Focus on Facts: Present ALL key facts, figures, and details from the summary without omission. Use precise numbers and specific details. Avoid opinions or conclusions."
+        "\n2. Language Style: Use clear, simple, direct language and active voice. Avoid unnecessary adjectives or embellishments. Connect related points naturally without commentary."
+        "\n3. Conversation Style: Create a dynamic dialogue where speakers build on each other's points. Each speaker should complete their thoughts before switching (2-3 exchanges total). Avoid repetition or filler content."
+        "\n4. Tone: Keep a semi-formal news reporting style with conversational energy while staying factual, avoiding phrases like 'fascinating', 'interesting', or personal reactions and opinions."
+        f"\n5. Regional Context: Use language and style appropriate for the {region} region, in {language}."
+        f"\n6. Length: Target approximately {word_count} words, not exceeding {word_count + 10} words. If condensing is needed, prioritize key facts."
+        'Return the output as valid JSON, formatted as {"male": "male dialogue", "female": "female dialogue"}. Do not include speaker names in the dialogue.'
+    )
 
     single_speaker_prompt = (
-        "Convert the following news summary into a podcast segment that feels like part of an ongoing monologue delivered by one speaker, Harry. "
-        "Maintain a semi-formal, neutral, and unbiased tone while ensuring the content is engaging and flows naturally. "
-        # "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
-        # f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
-        # f"Feel free to use this or come up with your own creative transitions that fit the context. "
-        "Ensure the segment stands alone while fitting naturally into a larger show. "
-        f"The monologue should be in {language} and reflect the cultural and linguistic style of the {region} region. "
-        f"Target a monologue length of approximately {word_count} words, not exceeding {word_count + 10} words. If necessary, condense content while preserving the news essence. "
-        'Return the output as valid JSON, formatted as {"male": "male dialogue"}. Avoid prefixing with the presenter\'s name. '
+        "Convert the following news summary into a podcast segment delivered by Harry. Important guidelines:"
+        "\n1. Focus on Facts: Present ALL key facts, figures, and details from the summary without omission. Use precise numbers and specific details. Avoid opinions or conclusions."
+        "\n2. Language Style: Use clear, simple, direct language and active voice. Avoid unnecessary adjectives or embellishments. Connect related points naturally without commentary."
+        "\n3. Flow: Structure the monologue to progress logically through the facts. Each point should build on the previous one. Avoid repetition or filler content."
+        "\n4. Tone: Keep a semi-formal news reporting style with conversational energy while staying factual, avoiding phrases like 'fascinating', 'interesting', or personal reactions and opinions."
+        f"\n5. Regional Context: Use language and style appropriate for the {region} region, in {language}."
+        f"\n6. Length: Target approximately {word_count} words, not exceeding {word_count + 10} words. If condensing is needed, prioritize key facts."
+        'Return the output as valid JSON, formatted as {"male": "male dialogue"}. Do not include speaker name in the dialogue.'
     )
 
     single_speaker_female_prompt = (
-        "Convert the following news summary into a podcast segment that feels like part of an ongoing monologue delivered by one speaker, Emily. "
-        "Maintain a semi-formal, neutral, and unbiased tone while ensuring the content is engaging and flows naturally. "
-        # "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
-        # f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
-        # f"Feel free to use this or come up with your own creative transitions that fit the context. "
-        "Ensure the segment stands alone while fitting naturally into a larger show. "
-        f"The monologue should be in {language} and reflect the cultural and linguistic style of the {region} region. "
-        f"Target a monologue length of approximately {word_count} words, not exceeding {word_count + 10} words. If necessary, condense content while preserving the news essence. "
-        'Return the output as valid JSON, formatted as {"female": "female dialogue"}. Avoid prefixing with the presenter\'s name. '
-    )
-
-    two_speakers_prompt = (
-        "Convert the following news summary into a podcast segment that feels like part of an ongoing conversation between two speakers, Harry and Emily, with each providing extended commentary before the other responds, maintaining a semi-formal news reporting style. The dialogue should flow smoothly without formal introductions, greetings or sign-offs."
-        "Maintain a semi-formal, neutral, and unbiased tone while ensuring the content is engaging and flows naturally. "
-        # "Include natural human elements such as brief pauses (using extra spaces or hyphens) and thoughtful sounds (like 'hmm..', 'ah...') to enhance realism. "
-        # f"Use diverse and natural transitions between topics. For example, you can use transitions like this one: '{transition_suggestion}' "
-        # f"Feel free to use this or come up with your own creative transitions that fit the context. "
-        "Ensure the segment stands alone while fitting naturally into a larger show. "
-        f"The conversation should be in {language} and reflect the cultural and linguistic style of the {region} region. "
-        f"Target a conversation length of approximately {word_count} words, not exceeding {word_count + 10} words. If necessary, condense content while preserving the news essence. "
-        'Return the output as valid JSON, formatted as {"male": "male dialogue", "female": "female dialogue"}. Avoid any extra prefix in the output with the presenter names, Harry and Emily.'
+        "Convert the following news summary into a podcast segment delivered by Emily. Important guidelines:"
+        "\n1. Focus on Facts: Present ALL key facts, figures, and details from the summary without omission. Use precise numbers and specific details. Avoid opinions or conclusions."
+        "\n2. Language Style: Use clear, simple, direct language and active voice. Avoid unnecessary adjectives or embellishments. Connect related points naturally without commentary."
+        "\n3. Flow: Structure the monologue to progress logically through the facts. Each point should build on the previous one. Avoid repetition or filler content."
+        "\n4. Tone: Keep a semi-formal news reporting style with conversational energy while staying factual, avoiding phrases like 'fascinating', 'interesting', or personal reactions and opinions."
+        f"\n5. Regional Context: Use language and style appropriate for the {region} region, in {language}."
+        f"\n6. Length: Target approximately {word_count} words, not exceeding {word_count + 10} words. If condensing is needed, prioritize key facts."
+        'Return the output as valid JSON, formatted as {"female": "female dialogue"}. Do not include speaker name in the dialogue.'
     )
 
     prompt = (
@@ -283,8 +291,8 @@ def generate_conversation(
     if new_instructions:
         instructions = new_instructions
 
-    conversation = llm_util.chat_with_openai(text_summary, instructions)
-    logger.info(f"Conversation response: {conversation}")
+    conversation = llm_util.chat_with_openai(text_summary, instructions, model)
+    logger.debug(f">>> Conversation response: {conversation}")
 
     return conversation
 

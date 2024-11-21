@@ -5,21 +5,22 @@ from services import utilities
 from lib.log import logger
 import numpy as np
 import config
+import time
+import constants
 
 
-
-def summarize_text_and_extract_categories(text):
+def summarize_text_and_extract_categories(text, model=constants.DEFAULT_MODEL):
     instructions = f"""
 You are a helpful assistant specializing in analysing and summarizing articles. 
 I will be providing the transcript of a news article.
 I would like you to do the following:
-1. Create an accurate detailed summary of the article, written as a concise, standalone article in 50 words.
-2. Create an accurate detailed summary of the article, written as a concise, standalone article in 200 words.
+1. Create a comprehensive 50-word summary that captures key details, including relevant companies, data points, and business impact. Write it as a standalone article in active voice.
+2. Create a detailed 200-word summary that captures the context, key entities, important concepts, and significant data points. Write it as a cohesive standalone article in active voice.
 3. Extract upto top 3 categories that the article belongs to. Try and use the categories from the below list as much as possible. Where its not possible, add the category that best describes the article.
     Category list: Fashion, Grocery, Electronics, Home Goods, Beauty, Wellness, Sports, Toys, Media, Auto/Industrial, Pet Care, Luxury, Digital Marketing, Social Media, E-commerce, Platforms, Retail Tech, Supply Chain, Fintech, Customer Experience, Sustainable Retail, Business Strategy, Consumer Trends, Omnichannel, Store Operations, Data Analytics, Startups, Regulations, Mergers/Acquisitions, Global Trade, Packaging, Cybersecurity, AI/ML, AR/VR, Workforce, Loyalty Programs
 4. Extract the most relevant function from this list, that this article will be most relevant to. {config.RETAIL_FUNCTIONS}
 5. Extract the most relevant industry from this list, that this article will be most relevant to. {config.RETAIL_INDUSTRIES}
-6. Determine if the text is a valid single news item. A valid news item should be a coherent article with a clear topic, not a collection of unrelated news, an advertisement, or a notification. Update the value of "single_news_item" to true if it is a valid news item, otherwise false.
+6. Determine if the text is a valid single news item. A valid news item should be a coherent article with a clear topic. Following are invalid news items: a collection of unrelated news, an advertisement, or javascript required messages or any other notification messages. Update the value of "single_news_item" to true if it is a valid news item, otherwise false.
 7. Identify the country where the news is happening or applicable to, and update the "region" field.
 8. Create an appropriate title for the article in a few words in English.
 
@@ -35,29 +36,16 @@ Provide your response in JSON format with the following structure:
     "english_title": "English title of the article"
 }}
 """
-    response = chat_with_openai(text, instructions)
+    response = chat_with_openai(text, instructions, model)
 
     # Parse the JSON response
     if response:
-        try:
-            summaries_and_categories = json.loads(response)
-            # Convert categories to lowercase
-            summaries_and_categories['categories'] = [category.lower() for category in summaries_and_categories['categories']]
-        except json.JSONDecodeError:
-            logger.error("Failed to parse JSON from OpenAI response.")
-            summaries_and_categories = {
-            "summary_50": "",
-            "summary_200": "",
-            "categories": [],
-            "importance_score": 0,
-            "single_news_item": False
-            }
-        return summaries_and_categories
+        return extract_json_from_llm_response(response)
     else:
         return None
 
 
-def chat_with_openai(text, instructions, model="gpt-4o-mini", temperature=0.5, max_tokens=4000):
+def chat_with_openai(text, instructions, model=constants.DEFAULT_MODEL, temperature=0.5, max_tokens=4000):
     try:
         response = openai_service.client.chat.completions.create(
             messages=[
@@ -128,11 +116,10 @@ def convert_preferences_to_json(text):
 
     response = chat_with_openai(text, instructions)
     logger.debug(f"convert_preferences_to_json >> Response :: {response}")
-    # Check if the response is valid JSON
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        logger.error("Failed to parse JSON from OpenAI response.")
+
+    if response:
+        return extract_json_from_llm_response(response)
+    else:
         return None
 
 def process_user_intent(transcribed_text):
@@ -156,13 +143,13 @@ def process_user_intent(transcribed_text):
     
     response = chat_with_openai(transcribed_text, instructions)
     
-    try:
-        result = json.loads(response)
-        logger.info(f"process_user_intent >> Response :: {result}")
-        return result["intent"], result["action"], result["response"]
-    except json.JSONDecodeError:
-        logger.error("Failed to parse JSON from OpenAI response in process_user_intent.")
-        return "unclear", "none", "I'm sorry, I didn't understand that. Could you please try again?"
+    if response:
+        result = extract_json_from_llm_response(response)
+        if result:
+            logger.info(f"process_user_intent >> Response :: {result}")
+            return result["intent"], result["action"], result["response"]
+    
+    return "unclear", "none", "I'm sorry, I didn't understand that. Could you please try again?"
 
 def get_embedding_with_weights(text, region=None, categories=None, industry=None, function=None, model="text-embedding-3-small"):
     try:
@@ -213,3 +200,168 @@ def get_base_embedding(text, model="text-embedding-3-small"):
         logger.error(f"Error generating embedding: {str(e)}")
         return np.array([])
     
+def rank_articles_by_importance(articles):
+    start_time = time.time()
+    logger.debug(f"rank_articles_by_importance :: Ranking {len(articles)} articles by importance")
+    
+    # Format articles and estimate tokens
+    formatted_articles = [
+        f"ID: {article['id']}\nTitle: {article.get('title', 'No title')}\n"
+        f"Summary: {article.get('summary_200', 'No summary')}"
+        for article in articles
+    ]
+    
+    # Debug log article IDs and titles
+    logger.debug("Articles to be ranked:")
+    for article in articles:
+        logger.debug(f"ID: {article['id']} - Title: {article.get('title', 'No title')}")
+    # Estimate tokens for each article
+    token_estimates = [estimate_tokens(article) for article in formatted_articles]
+    
+    articles_text = "\n\n".join(formatted_articles)
+    total_estimated_tokens = estimate_tokens(articles_text)
+    
+    logger.debug(f"Token estimation:")
+    logger.debug(f"Total estimated tokens: {total_estimated_tokens}")
+    logger.debug(f"Average tokens per article: {sum(token_estimates)/len(token_estimates):.2f}")
+    logger.debug(f"Max tokens in single article: {max(token_estimates)}")
+    logger.debug(f"Total text length: {len(articles_text)} characters")
+
+    # Prepare prompt for importance ranking
+    prompt = """
+    You are an expert news analyst. Review these articles and rank them by importance among each other
+    on a scale of 1-100, considering:
+    - Impact - economic, social and business impact
+    - Size of the brand/company/organization/individual involved
+    - Industry disruption potential
+    - Scale (financial amounts, reach)
+    - Relevance to key stakeholders
+    - Timeliness and urgency
+    Ensure all {len(articles)} articles are ranked on the scale of 1-100 without missing any.
+    Return a JSON object mapping article IDs to their importance scores (1-100), in this format:
+    {
+        "article_id1": 75,
+        "article_id2": 23
+    }
+    """
+
+    # Get rankings from LLM
+    response = chat_with_openai(articles_text, prompt, model=constants.DEFAULT_MODEL, max_tokens=10000)
+    logger.debug(f"rank_articles_by_importance >>>> :: Response :: {response}")
+    rankings = extract_json_from_llm_response(response)
+    logger.debug(f"rank_articles_by_importance :: Rankings :: {rankings}")
+    if isinstance(rankings, dict):
+        article_scores = [
+            {"id": article_id, "importance_score": score}
+            for article_id, score in rankings.items()
+        ]
+        return article_scores
+
+    logger.debug(f"rank_articles_by_importance :: Ranked {len(rankings)} articles. Time taken: {time.time() - start_time} seconds")
+    return rankings
+
+def extract_json_from_llm_response(response_text):
+    """
+    Extract valid JSON from LLM response by removing common prefixes/suffixes.
+    Returns the parsed JSON object or None if parsing fails.
+    """
+    if not response_text:
+        return None
+    try:
+        # First try parsing the raw response
+        return json.loads(response_text.strip())
+    except json.JSONDecodeError:
+        # Remove common prefixes
+        cleaned = response_text.strip()
+        for prefix in ['```json', '```']:
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):]
+                break
+
+        # Remove common suffixes
+        for suffix in ['```', "'", '"']:
+            if cleaned.endswith(suffix):
+                cleaned = cleaned[:-len(suffix)]
+                break
+        
+        cleaned = cleaned.strip()
+        
+        # Check if it's meant to be an array
+        if cleaned.startswith('['):
+            if not cleaned.endswith(']'):
+                cleaned = cleaned + ']'
+        else:  # Assume it's meant to be an object
+            if not cleaned.startswith('{'):
+                cleaned = '{' + cleaned
+            if not cleaned.endswith('}'):
+                cleaned = cleaned + '}'
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse JSON after cleaning: {cleaned}")
+            return None
+
+def rank_articles_by_importance_batched(articles, batch_size=200):
+    """
+    Ranks articles by importance, handling large sets by breaking them into batches
+    and performing a final re-ranking of top articles from each batch.
+    """
+    start_time = time.time()
+    logger.info(f"rank_articles_by_importance_batched :: Ranking {len(articles)} articles by importance")
+    
+    # If articles are fewer than batch_size, use the original method
+    if len(articles) <= batch_size:
+        return rank_articles_by_importance(articles)
+    
+    # Split articles into batches
+    batches = [articles[i:i + batch_size] for i in range(0, len(articles), batch_size)]
+    batch_rankings = []
+    
+    # Rank each batch
+    for i, batch in enumerate(batches):
+        logger.info(f"Processing batch {i+1}/{len(batches)} with {len(batch)} articles")
+        batch_result = rank_articles_by_importance(batch)
+        if batch_result:
+            batch_rankings.extend(batch_result)
+    
+    # Sort all rankings by importance score
+    sorted_rankings = sorted(batch_rankings, key=lambda x: x['importance_score'], reverse=True)
+    
+    # Take top 200 articles for final re-ranking
+    top_articles = []
+    seen_ids = set()
+    for ranking in sorted_rankings:
+        article = next((a for a in articles if a['id'] == ranking['id']), None)
+        if article and article['id'] not in seen_ids:
+            top_articles.append(article)
+            seen_ids.add(article['id'])
+            if len(top_articles) >= batch_size:
+                break
+    
+    # Perform final ranking on top articles
+    final_rankings = rank_articles_by_importance(top_articles) if top_articles else []
+    
+    # Append remaining articles with their original scores
+    final_rankings_dict = {r['id']: r['importance_score'] for r in final_rankings}
+    for ranking in sorted_rankings:
+        if ranking['id'] not in final_rankings_dict:
+            final_rankings.append(ranking)
+    
+    logger.info(f"rank_articles_by_importance_batched :: Completed ranking. Time taken: {time.time() - start_time} seconds")
+    return final_rankings
+
+def estimate_tokens(text):
+    """Estimate the number of tokens in a text using GPT-2 tokenizer rules.
+    This is a rough approximation - actual OpenAI tokens may vary."""
+    # Simple estimation rules
+    # 1. ~4 characters per token is a common rough estimate
+    # 2. Each punctuation mark and space typically counts as a token
+    # 3. Numbers and special characters may count as multiple tokens
+    
+    base_estimate = len(text) / 4
+    # Add extra tokens for newlines and punctuation
+    extra_tokens = text.count('\n') + text.count('.') + text.count(',') + text.count('!') + text.count('?')
+    return int(base_estimate + extra_tokens)
+
+
