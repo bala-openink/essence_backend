@@ -11,6 +11,7 @@ from db.factory import db_factory
 user_repository = db_factory.get_user_repository()
 user_history_repo = db_factory.get_generic_repository("user_listen_history")
 article_repo = db_factory.get_article_repository()
+article_repo_old = db_factory.get_article_repository_old()
 user_feed_repo = db_factory.get_user_feed_repository()
 
 # To fetch latest news for a user
@@ -44,7 +45,7 @@ def get_latest_news(
             user_preferences_vector = user_preferences["flat_vector"]
 
     # Query new articles (after newest_listened_date)
-    new_articles = article_repo.query_by_vector(
+    new_articles = article_repo_old.query_by_vector(
         user_preferences_vector, start_date=current_newest_date, limit=limit
     )
     logger.debug(f"New articles retrieved: {len(new_articles)}")
@@ -53,7 +54,7 @@ def get_latest_news(
 
     # If we don't have enough new articles, fetch older ones to fill the limit
     if len(new_articles) < limit:
-        older_articles = article_repo.query_by_vector(
+        older_articles = article_repo_old.query_by_vector(
             user_preferences_vector,
             end_date=current_oldest_date,
             limit=limit - len(new_articles),

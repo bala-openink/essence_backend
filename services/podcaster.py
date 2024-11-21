@@ -88,25 +88,32 @@ def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFA
     if config.SKIP_AUDIO_GENERATION:
         return
 
-
     # Step 2: Convert Text to Audio
     audio_segments = []
     
-    # Process each line from the raw conversation string
-    for line in conversation.strip().split('\n'):
-        if '"male":' in line:
-            speaker = "male"
-            text = line.split('": "')[1].rstrip('",')
-        elif '"female":' in line:
-            speaker = "female"
-            text = line.split('": "')[1].rstrip('",')
-        else:
+    # Handle both array and object formats
+    if isinstance(conversation, list):
+        # Handle array format
+        conversation_turns = conversation
+    else:
+        # Handle object format by converting to array
+        conversation_turns = []
+        for key, value in conversation.items():
+            speaker = 'male' if 'male' in key.lower() else 'female'
+            conversation_turns.append({'speaker': speaker, 'text': value})
+    
+    # Process each turn
+    for turn in conversation_turns:
+        speaker = turn.get('speaker')
+        text = turn.get('text', '')
+        
+        if not speaker or not text:
             continue
             
-        # Hack to remove the extra prefixes added by GPT
+        # Clean and process text as before
         cleaned_text = text.strip()
-        # Remove speaker names from start or end using regex
         cleaned_text = re.sub(r'^(?:Emily|Harry|male|female)[:\s]*|[:\s]*(?:Emily|Harry|male|female)$', '', cleaned_text, flags=re.IGNORECASE)
+        
         audio_segment = generate_audio(speaker, cleaned_text, request.language)
         audio_segments.append(audio_segment)
 
@@ -227,17 +234,15 @@ def generate_conversation(
 ):
     word_count = 40 if length == "short" else 500
 
-    # transition_suggestion = transition_phrases[random.randint(1, 15)]
-
     two_speakers_prompt = (
         "Convert the following news summary into a podcast segment between Harry and Emily. Important guidelines:"
         "\n1. Focus on Facts: Present ALL key facts, figures, and details from the summary without omission. Use precise numbers and specific details. Avoid opinions or conclusions."
         "\n2. Language Style: Use clear, simple, direct language and active voice. Avoid unnecessary adjectives or embellishments. Connect related points naturally without commentary."
-        "\n3. Conversation Style: Create a dynamic dialogue where speakers build on each other's points. Each speaker should complete their thoughts before switching (2-3 exchanges total). Avoid repetition or filler content."
+        "\n3. Conversation Style: Create a dynamic dialogue where speakers build on each other's points. Each speaker should complete their thoughts before switching and with maximum of 2 exchanges. Avoid repetition or filler content."
         "\n4. Tone: Keep a semi-formal news reporting style with conversational energy while staying factual, avoiding phrases like 'fascinating', 'interesting', or personal reactions and opinions."
         f"\n5. Regional Context: Use language and style appropriate for the {region} region, in {language}."
         f"\n6. Length: Target approximately {word_count} words, not exceeding {word_count + 10} words. If condensing is needed, prioritize key facts."
-        'Return the output as valid JSON, formatted as {"male": "male dialogue", "female": "female dialogue"}. Do not include speaker names in the dialogue.'
+        '\nReturn the output as an array of dialogue turns in JSON format like: [{"speaker": "male", "text": "..."}, {"speaker": "female", "text": "..."}]'
     )
 
     single_speaker_prompt = (
@@ -248,7 +253,7 @@ def generate_conversation(
         "\n4. Tone: Keep a semi-formal news reporting style with conversational energy while staying factual, avoiding phrases like 'fascinating', 'interesting', or personal reactions and opinions."
         f"\n5. Regional Context: Use language and style appropriate for the {region} region, in {language}."
         f"\n6. Length: Target approximately {word_count} words, not exceeding {word_count + 10} words. If condensing is needed, prioritize key facts."
-        'Return the output as valid JSON, formatted as {"male": "male dialogue"}. Do not include speaker name in the dialogue.'
+        '\nReturn the output as an array of dialogue turns in JSON format like: [{"speaker": "male", "text": "..."}]'
     )
 
     single_speaker_female_prompt = (
@@ -259,7 +264,7 @@ def generate_conversation(
         "\n4. Tone: Keep a semi-formal news reporting style with conversational energy while staying factual, avoiding phrases like 'fascinating', 'interesting', or personal reactions and opinions."
         f"\n5. Regional Context: Use language and style appropriate for the {region} region, in {language}."
         f"\n6. Length: Target approximately {word_count} words, not exceeding {word_count + 10} words. If condensing is needed, prioritize key facts."
-        'Return the output as valid JSON, formatted as {"female": "female dialogue"}. Do not include speaker name in the dialogue.'
+        '\nReturn the output as an array of dialogue turns in JSON format like: [{"speaker": "female", "text": "..."}]'
     )
 
     prompt = (
@@ -294,7 +299,7 @@ def generate_conversation(
     conversation = llm_util.chat_with_openai(text_summary, instructions, model)
     logger.debug(f">>> Conversation response: {conversation}")
 
-    return conversation
+    return llm_util.extract_json_from_llm_response(conversation)
 
 
 def generate_audio(speaker: str, text: str, language: str = "en"):

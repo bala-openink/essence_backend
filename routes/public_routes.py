@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.exceptions import BadRequest
 from lib.log import logger
@@ -11,16 +11,18 @@ import os
 import time
 import base64
 from db.factory import db_factory
+from routes.decorators import custom_jwt_required
 
 public_bp = Blueprint('public', __name__)
 user_repository = db_factory.get_user_repository()
 
 @public_bp.route('/latest_news', methods=['GET'])
-@jwt_required()
+@custom_jwt_required()
 def latest_news():
     logger.info("latest_news route")
 
-    user_id = get_jwt_identity()
+    # Use user_id from kwargs if bypassed
+    user_id = getattr(g, 'user_id', None) or get_jwt_identity()
     user = user_repository.get(user_id)
 
     if not user:

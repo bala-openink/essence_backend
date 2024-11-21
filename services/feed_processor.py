@@ -358,7 +358,7 @@ def process_stage2(batch_id=None, force=False):
         
         # Perform deduplication
         duplicate_articles, deduplicated_articles = vector_util.deduplicate_articles(articles_to_process)
-        article_repo.bulk_update(duplicate_articles)
+        article_repo.bulk_update_partial(duplicate_articles)
 
         # Rank articles by importance
         # article_scores = llm_util.rank_articles_by_importance_batched(deduplicated_articles)
@@ -508,7 +508,7 @@ def generate_and_save_audio_summary(article, previous_article=None):
         article['processing_status'] = 'summaries_extracted'
         article_repo.addOrUpdate(article)
 
-def process_stage3(batch_id=None, user_offset=0, total_users=0, batch_size=10):
+def process_stage3(batch_id=None, user_offset=0, batch_size=10):
     """
     Stage3: Creating user feeds.
     Process a batch of users for feed creation.
@@ -518,18 +518,17 @@ def process_stage3(batch_id=None, user_offset=0, total_users=0, batch_size=10):
         # Get next batch of users
         active_users = user_feed.get_active_users(offset=user_offset, limit=batch_size)
                 
-        logger.info(f"Processing batch of {len(active_users)} users (offset: {user_offset}/{total_users})")
+        logger.info(f"Processing batch of {len(active_users)} users (offset: {user_offset})")
         
-        # Process the batch of users
-        user_feed.create_feeds_for_users(active_users, batch_id)
-        
-        # Trigger next batch
-        next_offset = user_offset + batch_size
-        if next_offset < total_users:
+        if active_users and len(active_users) > 0:
+            # Process the batch of users
+            user_feed.create_feeds_for_users(active_users, batch_id)
+            
+            # Trigger next batch
+            next_offset = user_offset + batch_size
             utilities.background_task('services.feed_processor.process_stage3', 
                                     batch_id, 
-                                    user_offset=next_offset,
-                                    total_users=total_users)
+                                    user_offset=next_offset)
         else:
             logger.info(f"No more users to process for batch {batch_id}")
             # Mark stage3 as complete

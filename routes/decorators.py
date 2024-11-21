@@ -11,7 +11,8 @@ def custom_jwt_required(optional=False, fresh=False, refresh=False, locations=No
         def decorator(*args, **kwargs):
             # Check for internal test header
             if request.headers.get('X-Internal-Test'):
-                email = request.json.get('email')
+                # Get email from either query params (GET) or request body (POST)
+                email = request.args.get('email') if request.method == 'GET' else request.json.get('email')
                 if not email:
                     return jsonify({"message": "Email required for internal testing"}), 400
                 

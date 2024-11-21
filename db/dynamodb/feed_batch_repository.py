@@ -44,20 +44,18 @@ class DynamoDBFeedBatchRepository(FeedBatchRepository):
             expr_values = {}
             expr_names = {'#s': stage}
 
-            # For stage1, increment completed_feeds
-            if stage == 'stage1':
-                update_parts.append('completed_feeds = if_not_exists(completed_feeds, :zero) + :one')
-                expr_values[':zero'] = 0
-                expr_values[':one'] = 1
-
             # Update stage stats
             if result:
-                update_parts.append('#s = :stats')
-                expr_values[':stats'] = {
-                    'processed': result.get('processed', 0),
-                    'skipped': result.get('skipped', 0),
-                    'errors': result.get('errors', [])
-                }
+                update_parts.append('#s.item_processed = if_not_exists(#s.item_processed, :zero) + :processed')
+                update_parts.append('#s.item_skipped = if_not_exists(#s.item_skipped, :zero) + :skipped')
+                expr_values[':zero'] = 0
+                expr_values[':processed'] = result.get('processed', 0)
+                expr_values[':skipped'] = result.get('skipped', 0)
+                
+                if result.get('errors'):
+                    update_parts.append('#s.errors = list_append(if_not_exists(#s.errors, :empty_list), :new_errors)')
+                    expr_values[':empty_list'] = []
+                    expr_values[':new_errors'] = result['errors']
 
             # Add error
             if error_msg:
@@ -68,12 +66,12 @@ class DynamoDBFeedBatchRepository(FeedBatchRepository):
                 if not result:
                     update_parts.append('#s = :init')
                     expr_values[':init'] = {
-                        'processed': 0,
-                        'skipped': 0,
+                        'item_processed': 0,
+                        'item_skipped': 0,
                         'errors': [error_info]
                     }
                 else:
-                    update_parts.append('#s.errors = list_append(#s.errors, :error)')
+                    update_parts.append('#s.errors = list_append(if_not_exists(#s.errors, :empty_list), :error)')
                     expr_values[':error'] = [error_info]
 
             if update_parts:

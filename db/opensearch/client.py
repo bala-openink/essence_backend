@@ -101,8 +101,22 @@ class OpenSearchClient(DatabaseClient):
                     "rss_summary": {"type": "text"},
                     "source_name": {"type": "keyword"},
                     "type": {"type": "keyword"},
-                    "function": {"type": "text"},
-                    "industry": {"type": "text"},
+                    "function": {
+                        "type": "text",
+                        "fields": {
+                            "raw": {
+                                "type": "keyword"
+                            }
+                        }
+                    },
+                    "industry": {
+                        "type": "text",
+                        "fields": {
+                            "raw": {
+                                "type": "keyword"
+                            }
+                        }
+                    },
                     "region": {"type": "keyword"},
                     "domain": {"type": "keyword"},
                     "importance_score": {"type": "float"},

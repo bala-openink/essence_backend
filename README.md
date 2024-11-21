@@ -20,12 +20,14 @@ It runs on port 8000 by default (let it be)
 
 To run opensearch locally,
 
-docker run -e OPENSEARCH_INITIAL_ADMIN_PASSWORD='T!m3T0S3cur3!' \
-  -e discovery.type=single-node \
-  -e plugins.security.disabled=true \
-  -p 9200:9200 -p 9600:9600 \
-  --name local-opensearch \
+docker run -d \
+  --name opensearch-local \
+  -p 9200:9200 -p 9300:9300 \
+  -v opensearch-data:/usr/share/opensearch/data \
+  -e "discovery.type=single-node" \
+  -e "DISABLE_SECURITY_PLUGIN=true" \
   opensearchproject/opensearch:latest
+
 
 2. Run gunicorn server locally on port 4000 (not using docker for faster troubleshooting)
 > gunicorn -b 0.0.0.0:4000 --workers 1  app:app
@@ -45,3 +47,27 @@ docker buildx build --no-cache --platform linux/amd64 -t ocs-backend --load .
  - for deploying only the function, without docker or env changes. Use this, as its fast
 > serverless deploy function -f app --stage dev 
 > serverless deploy function -f parseFeedsScheduled --stage dev
+
+
+Other useful docker commands
+
+# To stop and remove the container
+docker stop opensearch-local
+docker rm opensearch-local
+
+# To check logs and volume details
+docker logs opensearch-local
+
+# To create a volume
+docker volume create opensearch-data
+
+# Check volume details
+docker volume inspect opensearch-data
+
+# Remove volume
+docker volume rm opensearch-data
+
+# After container is running, check the mount
+docker inspect opensearch-local | grep -A 10 "Mounts"
+
+docker ps -a | grep opensearch
