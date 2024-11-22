@@ -483,7 +483,7 @@ def generate_and_save_audio_summary(article, previous_article=None):
             user_name=None,
             previous_article=previous_article.get('summary_50') if previous_article else None
         )
-        audio_summary = podcaster.generate_audio_story(audio_request)
+        audio_summary, conversation = podcaster.generate_audio_story(audio_request)
         
         if audio_summary:
             # Build the streaming response object and upload to S3

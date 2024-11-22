@@ -2,7 +2,7 @@ from decimal import Decimal
 from lib.log import logger
 from util import vector_util, llm_util
 from db.factory import db_factory
-
+from services import user_feed
 user_repository = db_factory.get_user_repository()
 
 def update_user_preferences(user_id, preferences_text):
@@ -32,5 +32,6 @@ def update_user_preferences(user_id, preferences_text):
         user.preferences = preferences
         user_repository.update(user)
         logger.info(f"Preferences updated successfully for user {user_id}")
+        user_feed.create_feeds_for_user(user.id)        
     except Exception as e:
         logger.error(f"Error updating preferences for user {user_id}: {str(e)}")

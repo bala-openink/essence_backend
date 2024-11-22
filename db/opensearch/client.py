@@ -70,7 +70,6 @@ class OpenSearchClient(DatabaseClient):
         return self._client
 
     def create_index_if_not_exists(self, index_name: str, mapping: Dict) -> None:
-        logger.info(f"Creating index: {index_name}")
         """Create index if it doesn't exist"""
         if not self._client.indices.exists(index=index_name):
             self._client.indices.create(index=index_name, body=mapping)

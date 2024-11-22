@@ -82,6 +82,7 @@ def handle_verified_user(user, preferences, device_jti=None):
     
     if preferences:
         utilities.background_task('services.user_management.update_user_preferences', user.id, preferences)
+
     
     return jsonify({"token": new_token, "message": "Login successful"}), 200
 
@@ -241,6 +242,7 @@ def update_preferences():
             domain = string_util.extract_domain(news_sources)
             if domain and domain not in user.news_sources:  # Check if domain doesn't exist
                 user.news_sources.append(domain)
+        utilities.background_task('services.user_feed.create_feeds_for_user', user.id)
 
     if(first_name or country or language or news_sources):
         user_repository.update(user)
@@ -248,7 +250,6 @@ def update_preferences():
     if preferences_text:
         # Trigger background task to update user preferences
         utilities.background_task('services.user_management.update_user_preferences', user_id, preferences_text)
-        utilities.background_task('services.user_feed.create_feeds_for_user', user_id)
 
 
     return jsonify({"message": "Preferences update initiated"}), 202

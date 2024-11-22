@@ -41,7 +41,7 @@ def generate_custom_podcast():
         data = request.json
         if data is None:
             raise BadRequest("No data received")
-        
+
         logger.info(f"Received request data - Request ID: {request_id}")
         logger.debug(f"Request payload: {json.dumps(data, indent=2)}")
 
@@ -180,7 +180,7 @@ def generate_custom_podcast():
         Target duration: {duration_minutes} minutes (approximately {duration_minutes * 120} words)
         The conversation should be in {language} and reflect the cultural and linguistic style of the {region} region.
         {narrative_prompt}
-        Return the output as an array of dialogue turns in JSON format like: [{"speaker": "male", "text": "..."}, {"speaker": "female", "text": "..."}]
+        Return the output as an array of dialogue turns in JSON format like: [{{"speaker": "male", "text": "..."}}, {{"speaker": "female", "text": "..."}}]
         """
 
         # Generate the podcast conversation
@@ -199,7 +199,8 @@ def generate_custom_podcast():
 
         logger.info(f"Generating audio for podcast - Request ID: {request_id}")
         start_time = time.time()
-        podcast_audio = podcaster.generate_audio_story(audioStoryRequest)
+        podcast_audio, conversation = podcaster.generate_audio_story(audioStoryRequest)
+        logger.info(f"Conversation: {conversation}")
         generation_time = time.time() - start_time
         logger.info(
             f"Audio generation completed in {generation_time:.2f} seconds - Request ID: {request_id}"
@@ -586,7 +587,6 @@ def create_user_from_form():
 
         # Update user preferences
         utilities.background_task('services.user_management.update_user_preferences', user.id, json.dumps(preferences))
-        utilities.background_task('services.user_feed.create_feeds_for_user', user.id)
 
         return (
             jsonify(
@@ -930,3 +930,45 @@ def rank_articles_importance():
         logger.error(f"Error in rank_articles_importance: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@internal_bp.route("/create_audio", methods=["POST"])
+def create_audio():
+    request_id = str(uuid.uuid4())
+    logger.info(f"create_audio route - Request ID: {request_id}")
+    try:
+        data = request.json
+        if not data:
+            raise BadRequest("No data received")
+
+        # Validate required fields
+        if "conversation" not in data:
+            raise BadRequest("Missing required field: conversation")
+
+        # Extract parameters
+        conversation = data["conversation"]
+        language = data.get("language", "en")  # Default to English if not specified
+        add_background = data.get("add_background", False)  # Optional parameter
+
+        # Generate audio segments
+        audio_segment = podcaster.create_audio_segments(
+            conversation=conversation,
+            language=language,
+            add_background=add_background
+        )
+
+        # Convert to bytes and prepare response
+        audio_bytes = BytesIO()
+        audio_segment.export(audio_bytes, format="mp3")
+        audio_bytes.seek(0)
+
+        return send_file(
+            audio_bytes,
+            mimetype="audio/mpeg",
+            as_attachment=True,
+            download_name=f"audio_{request_id}.mp3",
+        )
+
+    except BadRequest as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error in create_audio_segments route: {str(e)}")
+        return jsonify({"error": str(e)}), 500

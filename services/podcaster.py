@@ -70,7 +70,7 @@ def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFA
 
     # Check if result is in cache
     if request_hash in cache:
-        return cache[request_hash]
+        return cache[request_hash], None
 
     # Step 1: Generate Conversational Podcast Content
     conversation = generate_conversation(
@@ -86,9 +86,18 @@ def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFA
     )
 
     if config.SKIP_AUDIO_GENERATION:
-        return
+        return None, conversation
 
     # Step 2: Convert Text to Audio
+    final_audio = create_audio_segments(conversation, request.language, request.add_background)
+
+    # Store the audio in cache and return
+    cache[request_hash] = final_audio
+    return final_audio, conversation
+
+
+def create_audio_segments(conversation, language: str, add_background: bool = False) -> AudioSegment:
+    """Creates and merges audio segments from conversation text."""
     audio_segments = []
     
     # Handle both array and object formats
@@ -110,22 +119,18 @@ def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFA
         if not speaker or not text:
             continue
             
-        # Clean and process text as before
+        # Clean and process text
         cleaned_text = text.strip()
         cleaned_text = re.sub(r'^(?:Emily|Harry|male|female)[:\s]*|[:\s]*(?:Emily|Harry|male|female)$', '', cleaned_text, flags=re.IGNORECASE)
         
-        audio_segment = generate_audio(speaker, cleaned_text, request.language)
+        audio_segment = generate_audio(speaker, cleaned_text, language)
         audio_segments.append(audio_segment)
 
-    # Step 3: Combine Audio Segments
     final_audio = merge_audio_segments(audio_segments)
 
-    # Step 4: Add Background Music if Required
-    if request.add_background:
+    if add_background:
         final_audio = add_bg(final_audio)
 
-    # Store the audio in cache and return
-    cache[request_hash] = final_audio
     return final_audio
 
 

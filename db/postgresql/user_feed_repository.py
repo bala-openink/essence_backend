@@ -50,7 +50,22 @@ class PostgreSQLUserFeedRepository(UserFeedRepository):
                     date_published, summary_50, summary_200, audio_summary,
                     categories, source_name, type, is_from_preferred_source, score, importance_score
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id, article_id) DO NOTHING
+                ON CONFLICT (user_id, article_id) 
+                DO UPDATE SET
+                    title = EXCLUDED.title,
+                    url = EXCLUDED.url,
+                    domain = EXCLUDED.domain,
+                    image = EXCLUDED.image,
+                    date_published = EXCLUDED.date_published,
+                    summary_50 = EXCLUDED.summary_50,
+                    summary_200 = EXCLUDED.summary_200,
+                    audio_summary = EXCLUDED.audio_summary,
+                    categories = EXCLUDED.categories,
+                    source_name = EXCLUDED.source_name,
+                    type = EXCLUDED.type,
+                    is_from_preferred_source = EXCLUDED.is_from_preferred_source,
+                    score = EXCLUDED.score,
+                    importance_score = EXCLUDED.importance_score
             """, values)
             self._conn.commit()
             

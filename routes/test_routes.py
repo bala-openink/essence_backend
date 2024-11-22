@@ -129,7 +129,7 @@ def extract_transcript():
         add_background=False,
         user_name=None
     )
-    audio_summary_segment = podcaster.generate_audio_story(audio_request, model)
+    audio_summary_segment, conversation = podcaster.generate_audio_story(audio_request, model)
 
     if audio_summary_segment:
         audio_summary = BytesIO()

@@ -27,3 +27,19 @@ for test in test_inputs:
     print(f"Original: '{test}'")
     print(f"Cleaned:  '{cleaned}'")
     print("-" * 50)
+
+duration_minutes = 10
+language = "en"
+region = "US"
+narrative_prompt = "The conversation should be about the latest news in the world."
+
+podcast_prompt = f"""
+        Create a natural, engaging podcast conversation between the hosts, Harry and Emily using all the relevant articles provided. 
+
+        Key requirements:
+        Target duration: {duration_minutes} minutes (approximately {duration_minutes * 120} words)
+        The conversation should be in {language} and reflect the cultural and linguistic style of the {region} region.
+        {narrative_prompt}
+        Return the output as an array of dialogue turns in JSON format like: [{{"speaker": "male", "text": "..."}}, {{"speaker": "female", "text": "..."}}]
+        """
+print(podcast_prompt)
