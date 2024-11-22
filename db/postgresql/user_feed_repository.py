@@ -99,7 +99,7 @@ class PostgreSQLUserFeedRepository(UserFeedRepository):
                        categories, source_name, type, is_from_preferred_source, score, importance_score, date_created
                 FROM user_feed
                 WHERE user_id = %s
-                AND score > 0 -- Filter out articles with negative scores to remove low relevance articles
+                AND score >= 0 -- Filter out articles with negative scores to remove low relevance articles
                 AND sent_to_user = FALSE
                 AND is_from_preferred_source = %s
             """

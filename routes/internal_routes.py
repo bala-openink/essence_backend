@@ -174,14 +174,13 @@ def generate_custom_podcast():
         # Create narrative prompt
         logger.info(f"Creating podcast narrative prompt - Request ID: {request_id}")
         podcast_prompt = f"""
-        Create a natural, engaging podcast conversation about the topic, {narrative_prompt} using all the relevant articles provided in a cohesive and a natural sounding manner. 
+        Create a natural, engaging podcast conversation between the hosts, Harry and Emily using all the relevant articles provided. 
 
         Key requirements:
-        2. Target duration: {duration_minutes} minutes (approximately {duration_minutes * 150} words)
-        3. Make it sound as human like as possible and it should feel like a natural conversation between two hosts, who are very familiar with the topic and with each other.
-        4. Include relevant dates, amounts, other details and context where appropriate
-        5. The conversation should be in {language} and reflect the cultural and linguistic style of the {region} region.
-        6. Return the output as valid clean JSON without any additional prefixes or formatting, in this format  {{'male': 'male dialogue', 'female': 'female dialogue',...}}"
+        Target duration: {duration_minutes} minutes (approximately {duration_minutes * 120} words)
+        The conversation should be in {language} and reflect the cultural and linguistic style of the {region} region.
+        {narrative_prompt}
+        Return the output as an array of dialogue turns in JSON format like: [{"speaker": "male", "text": "..."}, {"speaker": "female", "text": "..."}]
         """
 
         # Generate the podcast conversation

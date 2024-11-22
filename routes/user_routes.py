@@ -248,6 +248,8 @@ def update_preferences():
     if preferences_text:
         # Trigger background task to update user preferences
         utilities.background_task('services.user_management.update_user_preferences', user_id, preferences_text)
+        utilities.background_task('services.user_feed.create_feeds_for_user', user_id)
+
 
     return jsonify({"message": "Preferences update initiated"}), 202
 

@@ -14,14 +14,13 @@ class OpenSearchClient(DatabaseClient):
     """OpenSearch client management"""
     
     def __init__(self, local: bool = False, stage: str = constants.STAGE_LOCAL):
-        self._client = None
-        self._environment = config.ENVIRONMENT
-        self.stage = stage
         self.local = local
+        self.stage = stage
+        self._client = None
         
     def connect(self) -> 'OpenSearchClient':
         """Create OpenSearch client and initialize indices"""
-        if self._environment == 'LOCAL':
+        if self.local:
             self._client = OpenSearch(
                 hosts=[{'host': config.OPENSEARCH_HOST, 'port': config.OPENSEARCH_PORT}],
                 http_auth=(config.OPENSEARCH_USERNAME, config.OPENSEARCH_PASSWORD),
@@ -71,6 +70,7 @@ class OpenSearchClient(DatabaseClient):
         return self._client
 
     def create_index_if_not_exists(self, index_name: str, mapping: Dict) -> None:
+        logger.info(f"Creating index: {index_name}")
         """Create index if it doesn't exist"""
         if not self._client.indices.exists(index=index_name):
             self._client.indices.create(index=index_name, body=mapping)
