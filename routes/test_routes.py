@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify, send_file
 from lib.log import logger
 import uuid
+import datetime
+
 from db.factory import db_factory
 from services import utilities
-from util import llm_util, feed_util
+from util import llm_util, feed_util, string_util
 from services import feed_processor
 from services import podcaster
 from models.audio_story_request import AudioStoryRequest
@@ -15,6 +17,7 @@ test_bp = Blueprint('test', __name__)
 
 article_repo = db_factory.get_article_repository()
 user_repo = db_factory.get_user_repository()
+feed_batch_repo = db_factory.get_feed_batch_repository()
 
 ##################################################################################
 # ######## TESTING ENDPOINTS #####################################################
@@ -145,13 +148,27 @@ def extract_transcript():
 def process_feed():
     logger.info("process_feed route")
     feed_url = request.args.get('feed_url')
+    batch_id = string_util.generate_request_id()
     if not feed_url:
         return jsonify({'error': 'feed_url parameter is required'}), 400
 
     try:
-        feed_processor.process_stage1_rssapp("TEST", "ecommerce", feed_url)
-        feed_processor.process_stage2()
-        feed_processor.process_stage3()
+        batch_record = {
+            'batch_id': batch_id,
+            'total_feeds': 1,
+            'start_time': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        feed_batch_repo.create_batch(batch_record)
+
+        feed = {
+            'rss_type': 'rss.app',
+            'source_name': 'TEST',
+            'category': 'ecommerce',
+            'feed_url': feed_url,
+            'id': "123456"
+        }
+
+        feed_processor.process_stage1(feed, batch_id)
         logger.info(f"Feed reader and audio generation completed for feed_url: {feed_url}")
     except Exception as e:
         logger.error(f"Error in background feed processing: {str(e)}", exc_info=True)
@@ -160,9 +177,9 @@ def process_feed():
 @test_bp.route('/force_process_feed', methods=['GET'])
 def force_process_feed():
     logger.info("force_process_feed route")
-
+    force = request.args.get('force', default='false').lower() == 'true'
     try:
-        feed_processor.process_stage2(force=True)
+        feed_processor.process_stage2(force=force)
         feed_processor.process_stage3()
         logger.info("force_process_feed completed")
     except Exception as e:

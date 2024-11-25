@@ -164,17 +164,6 @@ class FeedBatchRepository(ABC):
         pass
 
     @abstractmethod
-    def update_batch_status(
-        self,
-        batch_id: str,
-        stage: str,
-        result: Optional[Dict] = None,
-        error_msg: Optional[str] = None
-    ) -> bool:
-        """Update batch processing status"""
-        pass
-
-    @abstractmethod
     def mark_stage_complete(
         self,
         batch_id: str,
@@ -182,6 +171,16 @@ class FeedBatchRepository(ABC):
         end_time: str
     ) -> bool:
         """Mark a processing stage as complete"""
+        pass
+
+    @abstractmethod
+    def update_stage_status(self, batch_id: str, stage: int, processed: int, skipped: int, errors: List[str]) -> bool:
+        """Update stage status with processed, skipped, and errors"""
+        pass
+
+    @abstractmethod
+    def increment_completed_feeds(self, batch_id: str, increment: int = 1) -> bool:
+        """Increment the number of completed feeds"""
         pass
 
 class DatabaseClient(ABC):

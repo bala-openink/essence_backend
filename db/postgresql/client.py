@@ -92,6 +92,26 @@ class PostgreSQLClient(DatabaseClient):
             -- Primary index for date-based queries with score
             CREATE INDEX IF NOT EXISTS idx_user_feed_date_created_score 
             ON user_feed(user_id, date_created DESC, score DESC);
+
+            CREATE TABLE IF NOT EXISTS feed_batch (
+                batch_id VARCHAR(255) PRIMARY KEY,
+                status VARCHAR(50),
+                start_time TIMESTAMP WITH TIME ZONE,
+                total_feeds INTEGER DEFAULT 0,
+                completed_feeds INTEGER DEFAULT 0,
+                stage1_processed INTEGER DEFAULT 0,
+                stage1_skipped INTEGER DEFAULT 0,
+                stage1_errors TEXT[] DEFAULT '{}',
+                stage1_completion_time TIMESTAMP WITH TIME ZONE,
+                stage2_processed INTEGER DEFAULT 0,
+                stage2_skipped INTEGER DEFAULT 0,
+                stage2_errors TEXT[] DEFAULT '{}',
+                stage2_completion_time TIMESTAMP WITH TIME ZONE,
+                stage3_processed INTEGER DEFAULT 0,
+                stage3_skipped INTEGER DEFAULT 0,
+                stage3_errors TEXT[] DEFAULT '{}',
+                stage3_completion_time TIMESTAMP WITH TIME ZONE
+            );
             """)
-        if self._conn:
-            self._conn.commit()
+            if self._conn:
+                self._conn.commit()

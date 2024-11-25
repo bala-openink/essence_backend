@@ -1,5 +1,9 @@
 from urllib.parse import urlparse
 from lib.log import logger
+import numpy as np
+
+def generate_request_id():
+    return ''.join(np.random.choice(list('0123456789ABCDEF'), size=6))
 
 def extract_domain(url):
     if not url:

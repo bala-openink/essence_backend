@@ -330,6 +330,11 @@ def get_time_of_day(current_time):
 def background_task(task_path, *args, **kwargs):
     if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
         logger.info("Running a background task inside AWS Lambda")
+        
+        # Convert any datetime objects in args and kwargs to strings
+        args = [arg.isoformat() if isinstance(arg, datetime.datetime) else arg for arg in args]
+        kwargs = {k: (v.isoformat() if isinstance(v, datetime.datetime) else v) for k, v in kwargs.items()}
+
         payload = {
             'background_task': True,
             'task_path': task_path,

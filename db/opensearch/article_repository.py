@@ -186,7 +186,12 @@ class OpenSearchArticleRepository(ArticleRepository):
             logger.debug(f"OpenSearch query execution time: {query_time:.3f} seconds. total time: {time.time() - initial_time:.3f} seconds")
             
             logger.info(f"Retrieved {len(response['hits']['hits'])} articles between {start_date} and {end_date}")
-            return [hit['_source'] for hit in response['hits']['hits']]
+            
+            # Include the score in the returned results
+            return [
+                {**hit['_source'], 'score': hit['_score']}
+                for hit in response['hits']['hits']
+            ]
         except Exception as e:
             logger.error(f"Error querying articles from OpenSearch: {str(e)}")
             return []

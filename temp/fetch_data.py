@@ -22,7 +22,7 @@ response = client.list_tables()
 print("Tables:", response['TableNames'])
 
 # Get table reference
-table_name = 'user_local'
+table_name = 'feed_local'
 table = dynamodb.Table(table_name)
 
 # Scan will return all items (simpler than query for testing)

@@ -84,11 +84,13 @@ def create_feeds_for_users(users, batch_id=None):
             logger.info("No articles found for feed creation")
             return
         
+        error_users = []
         for user in users:
             try:
                 _create_user_feed(user, articles)
             except Exception as e:
-                # Already logged in _create_user_feed
+                logger.error(f"Error creating feed for user {user.id}: {str(e)}")
+                error_users.append(user.id)
                 continue
                 
         execution_end_time = datetime.datetime.now(datetime.timezone.utc)

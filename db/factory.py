@@ -10,6 +10,7 @@ from .opensearch.article_repository import OpenSearchArticleRepository
 from .dynamodb.repository import DynamoDBRepository
 from .dynamodb.feed_batch_repository import DynamoDBFeedBatchRepository
 from .postgresql.user_feed_repository import PostgreSQLUserFeedRepository
+from .postgresql.feed_batch_repository import PostgreSQLFeedBatchRepository
 
 class DatabaseFactory:
     """Factory for creating database repositories"""
@@ -60,14 +61,6 @@ class DatabaseFactory:
             self._repositories[key] = DynamoDBUserRepository(table)
         return self._repositories[key]
 
-    def get_feed_batch_repository(self) -> DynamoDBFeedBatchRepository:
-        """Get feed batch repository instance"""
-        key = 'feed_batch'
-        if key not in self._repositories:
-            table = self.dynamo_client.get_table(f"feed_batch_{self.stage}")
-            self._repositories[key] = DynamoDBFeedBatchRepository(table)
-        return self._repositories[key]
-
     def get_generic_repository(self, table_name: str) -> DynamoDBRepository:
         """Get generic repository for simple tables"""
         key = f'generic_{table_name}'
@@ -108,6 +101,13 @@ class DatabaseFactory:
         key = 'user_feed'
         if key not in self._repositories:
             self._repositories[key] = PostgreSQLUserFeedRepository(self.postgres_client)
+        return self._repositories[key]
+
+    def get_feed_batch_repository(self) -> PostgreSQLFeedBatchRepository:
+        """Get the PostgreSQL feed batch repository"""
+        key = 'feed_batch'
+        if key not in self._repositories:
+            self._repositories[key] = PostgreSQLFeedBatchRepository(self.postgres_client)
         return self._repositories[key]
 
 # Global factory instance

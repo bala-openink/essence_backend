@@ -12,7 +12,7 @@ from services import utilities
 from models.audio_story_request import AudioStoryRequest
 from lib.log import logger
 from db.factory import db_factory
-from util import audio_util, llm_util
+from util import audio_util, llm_util, email_util
 import config
 import constants
 
@@ -60,7 +60,7 @@ def generate_hash(text_summary: str) -> str:
     return hashlib.sha256(text_summary.encode()).hexdigest()
 
 
-def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFAULT_MODEL):
+def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFAULT_MODEL, skip_audio_generation: bool = False):
     text_summary = request.text_summary
     if text_summary is None:
         raise BadRequest("Text summary is provided. Cannot continue")
@@ -85,18 +85,18 @@ def generate_audio_story(request: AudioStoryRequest, model: str = constants.DEFA
         model=model,
     )
 
-    if config.SKIP_AUDIO_GENERATION:
+    if config.SKIP_AUDIO_GENERATION or skip_audio_generation:
         return None, conversation
 
     # Step 2: Convert Text to Audio
-    final_audio = create_audio_segments(conversation, request.language, request.add_background)
+    final_audio = create_audio_for_conversation(conversation, request.language, request.add_background)
 
     # Store the audio in cache and return
     cache[request_hash] = final_audio
     return final_audio, conversation
 
 
-def create_audio_segments(conversation, language: str, add_background: bool = False) -> AudioSegment:
+def create_audio_for_conversation(conversation, language: str, add_background: bool = False) -> AudioSegment:
     """Creates and merges audio segments from conversation text."""
     audio_segments = []
     
@@ -133,6 +133,33 @@ def create_audio_segments(conversation, language: str, add_background: bool = Fa
 
     return final_audio
 
+def create_audio_in_background(conversation, language: str, add_background: bool = False, request_id: str = "DEFAULT", email: str = None):
+    if conversation is None:
+        raise BadRequest("Conversation is not provided. Cannot continue")
+
+    s3_public_url = None
+    # Check if result is in cache
+    if request_id in cache:
+        s3_public_url = cache[request_id]
+    else:
+        final_audio = create_audio_for_conversation(conversation, language, add_background)
+        if final_audio:
+            # Build the streaming response object and upload to S3
+            output = BytesIO()
+            final_audio.export(output, format="mp3")
+
+            key = f"conversations/{request_id}.mp3"
+            s3_url = utilities.upload_audio_to_s3(key, output)
+            s3_public_url = utilities.generate_audio_url_public(s3_url)
+            if s3_public_url:
+                cache[request_id] = s3_public_url
+    
+    if email and s3_public_url:
+        subject = f"Your ESSENCE podcast for request {request_id} is ready"
+        body = f"Hello,\n\nYour ESSENCE podcast for request {request_id} is ready. \n\nDownload it from here: {s3_public_url}\n\nBest regards,\nThe ESSENCE Team"
+        email_util.send_email(email, subject, body)
+
+    return s3_public_url
 
 def generate_intro_audio(
     userName="there",
@@ -298,6 +325,7 @@ def generate_conversation(
         else random.choice([single_speaker_prompt, single_speaker_female_prompt])
     )
 
+    # OVerriding instructions if provided in the request
     if new_instructions:
         instructions = new_instructions
 

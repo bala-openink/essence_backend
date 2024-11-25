@@ -11,7 +11,7 @@ from util import llm_util, date_util
 from lib.log import logger
 from services import podcaster
 from models.audio_story_request import AudioStoryRequest
-from lib.email_service import send_email
+from util.email_util import send_email
 from util import llm_util
 from util import vector_util
 import config
@@ -52,11 +52,9 @@ def parse_feeds():
         
         # Create a batch record to track overall progress
         batch_record = {
-            'id': batch_id,
+            'batch_id': batch_id,
             'total_feeds': len(feeds),
-            'completed_feeds': 0,
             'start_time': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            'status': 'in_progress'
         }
         feed_batch_repo.create_batch(batch_record)
 
@@ -69,7 +67,6 @@ def parse_feeds():
             except Exception as e:
                 error_msg = f"Error starting background task for feed {feed['id']}: {str(e)}"
                 logger.error(error_msg)
-                update_batch_status(batch_id, "stage1", error_msg=error_msg)
 
         logger.info(f"All feed processing tasks initiated for batch {batch_id}")
 
@@ -88,7 +85,6 @@ def process_stage1(feed, batch_id=None):
         source_name = feed.get('source_name')
         category = feed.get('category')
         feed_url = feed.get('feed_url')
-        feed_id = feed.get('id')
 
         if rss_type == 'rss.app':
             processed_count, skipped_count, errors = process_stage1_rssapp(source_name, category, feed_url)
@@ -97,16 +93,9 @@ def process_stage1(feed, batch_id=None):
         feed['last_processed_date'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         feed_repo.update(feed)
 
-        result = {
-            'processed': processed_count, 
-            'skipped': skipped_count, 
-            'errors': errors,
-            'feed_id': feed_id
-        }
+        feed_batch_repo.increment_completed_feeds(batch_id)
+        feed_batch_repo.update_stage_status(batch_id, stage="stage1", processed=processed_count, skipped=skipped_count, errors=errors)
 
-        # Update batch with success result
-        update_batch_status(batch_id, stage="stage1", result=result, feed=feed)
-        
         # Check if all feeds are processed
         batch = feed_batch_repo.get_batch(batch_id) if batch_id else None
         if batch and batch['completed_feeds'] >= batch['total_feeds']:
@@ -118,61 +107,24 @@ def process_stage1(feed, batch_id=None):
                 end_time=datetime.datetime.now(datetime.timezone.utc).isoformat()
             )
             
-            # Send email with processing summary
-            if batch:
-                send_processing_summary_email("stage1",
-                    batch.get('stage1', {}).get('processed', 0),
-                    batch.get('stage1', {}).get('skipped', 0),
-                    batch.get('stage1', {}).get('errors', [])
-                )
-
-
             # Trigger stage2
             utilities.background_task('services.feed_processor.process_stage2', batch_id)
-        
         return
 
     except Exception as e:
         error_msg = f"Error processing feed {feed.get('id', 'unknown')}: {str(e)}"
         logger.error(error_msg)
-        update_batch_status(batch_id, "stage1", error_msg=error_msg, feed=feed)
         return
     
-def update_batch_status(batch_id, stage, result=None, error_msg=None, feed=None):
-    """
-    Update the batch record with processing results for different stages.
-    
-    Args:
-        batch_id (str): The ID of the batch
-        stage (str): Processing stage ('stage1', 'stage2', 'stage3')
-        result (dict, optional): Success result containing processed/skipped counts
-        error_msg (str, optional): Error message if processing failed
-        feed (dict, optional): Feed being processed (only for stage1)
-    """
+def update_batch_status(batch_id, stage, processed, skipped, errors):
     try:
-        if stage == 'stage1' and not feed:
-            raise ValueError("Feed is required for stage1 updates")
-
-        # Prepare error info if there's an error message
-        error_info = {}
-        if error_msg:
-            error_info = {
-                'error': error_msg,
-                'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
-            }
-            # Add feed details for stage1 errors
-            if stage == 'stage1' and feed:
-                error_info.update({
-                    'feed_id': feed.get('id', 'unknown'),
-                    'feed_url': feed.get('feed_url', 'Unknown')
-                })
-
         # Update batch using repository
-        success = feed_batch_repo.update_batch_status(
+        success = feed_batch_repo.update_stage_status(
             batch_id=batch_id,
             stage=stage,
-            result=result,
-            error_msg=error_info
+            processed=processed,
+            skipped=skipped,
+            errors=errors
         )
         if success:
             logger.info(f"Updated batch {batch_id} for {stage}")
@@ -205,11 +157,11 @@ def process_stage1_rssapp(source_name, category, feed_url):
             except Exception as e:
                 error_msg = f"Error processing item from {feed_url}: {str(e)}"
                 logger.error(error_msg)
-                errors.append({'url': item.get('url', 'Unknown URL'), 'error': error_msg})
+                errors.append(f"{item.get('url', 'Unknown URL')}: {error_msg}")
     else:
         error_msg = f"Failed to fetch feed from {feed_url}"
         logger.error(error_msg)
-        errors.append({'url': feed_url, 'error': error_msg})
+        errors.append(f"{feed_url}: {error_msg}")
     
     return processed_count, skipped_count, errors
 
@@ -375,7 +327,6 @@ def process_stage2(batch_id=None, force=False):
     except Exception as e:
         error_msg = f"Error processing stage2 for batch {batch_id}: {str(e)}"
         logger.error(error_msg)
-        update_batch_status(batch_id, "stage2", error_msg=error_msg)
 
 def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=100):
     """
@@ -397,20 +348,11 @@ def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=10
                 end_time=datetime.datetime.now(datetime.timezone.utc).isoformat()
             )
             
-            # Send summary email and trigger stage3
-            batch = feed_batch_repo.get_batch(batch_id) if batch_id else None
-            if batch:
-                send_processing_summary_email("stage2",
-                    batch.get('stage2', {}).get('processed', 0),
-                    batch.get('stage2', {}).get('skipped', 0),
-                    batch.get('stage2', {}).get('errors', [])
-                )
-
             # Trigger stage3
             utilities.background_task('services.feed_processor.process_stage3', batch_id)
             return
         
-        logger.info(f"Processing batch of {len(articles_to_process)} articles")
+        logger.info(f"generate_audio_summaries_batch >> Processing batch of {len(articles_to_process)} articles")
         
         processed_count = 0
         error_count = 0
@@ -434,25 +376,15 @@ def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=10
                 error_msg = f"Error processing article {article['id']}: {str(e)}"
                 logger.error(error_msg)
                 error_count += 1
-                error_articles.append({
-                    'url': article.get('url', 'Unknown'),
-                    'error': error_msg
-                })
+                error_articles.append(f"{article.get('url', 'Unknown')}: {error_msg}")
                 
                 # Reset article status and record error
                 article['processing_status'] = 'summaries_extracted'
                 article_repo.addOrUpdate(article)
                 
-                update_batch_status(batch_id, "stage2", error_msg=error_msg)
-
-        # Update batch with results
-        result = {
-            'processed': processed_count,
-            'skipped': len(articles_to_process) - processed_count - error_count,
-            'errors': error_articles
-        }
-        update_batch_status(batch_id, "stage2", result=result)
-        
+        skipped = len(articles_to_process) - processed_count
+        feed_batch_repo.update_stage_status(batch_id, "stage2", processed=processed_count, skipped=skipped, errors=error_articles)
+        logger.info(f"generate_audio_summaries_batch >> Batch : {batch_id} Processed {processed_count} articles, skipped {skipped} articles, with {error_count} errors")
         # Trigger next batch
         utilities.background_task('services.feed_processor.generate_audio_summaries_batch', 
                                 batch_id, 
@@ -461,7 +393,6 @@ def generate_audio_summaries_batch(batch_id=None, start_date=None, batch_size=10
     except Exception as e:
         error_msg = f"Error in generate_audio_summaries_batch: {str(e)}"
         logger.error(error_msg)
-        update_batch_status(batch_id, "stage2", error_msg=error_msg)
         
 
 def generate_and_save_audio_summary(article, previous_article=None):
@@ -518,11 +449,14 @@ def process_stage3(batch_id=None, user_offset=0, batch_size=10):
         # Get next batch of users
         active_users = user_feed.get_active_users(offset=user_offset, limit=batch_size)
                 
-        logger.info(f"Processing batch of {len(active_users)} users (offset: {user_offset})")
+        logger.info(f"process_stage3 >> Batch : {batch_id} Processing batch of {len(active_users)} users (offset: {user_offset})")
         
         if active_users and len(active_users) > 0:
             # Process the batch of users
-            user_feed.create_feeds_for_users(active_users, batch_id)
+            error_users = user_feed.create_feeds_for_users(active_users, batch_id)
+            processed_count = len(active_users) - len(error_users) if error_users else len(active_users)
+            skipped_count = len(error_users) if error_users else 0
+            feed_batch_repo.update_stage_status(batch_id, "stage3", processed=processed_count, skipped=skipped_count, errors=error_users)
             
             # Trigger next batch
             next_offset = user_offset + batch_size
@@ -541,33 +475,37 @@ def process_stage3(batch_id=None, user_offset=0, batch_size=10):
             # Send final summary email
             batch = feed_batch_repo.get_batch(batch_id) if batch_id else None
             if batch:
-                send_processing_summary_email("stage3",
-                    batch.get('stage3', {}).get('processed', 0),
-                    batch.get('stage3', {}).get('skipped', 0),
-                    batch.get('stage3', {}).get('errors', [])
-                )
+                send_processing_summary_email(batch)
             return
 
-        
     except Exception as e:
         error_msg = f"Error in process_stage3: {str(e)}"
         logger.error(error_msg)
-        update_batch_status(batch_id, "stage3", error_msg=error_msg)
 
-def send_processing_summary_email(processing_stage, total_articles, total_skipped, error_articles):
-    subject = f"Env::{stage}, Essence Feed Processing Summary, Stage::{processing_stage}"
-    body = f"""
-        Feed processing completed.
+def send_processing_summary_email(batch):
+    subject = f"Env::{config.STAGE}, Essence Feed Processing Summary"
+    stages = ["stage1", "stage2", "stage3"]
+    body = "Feed processing completed.\n\n"
 
-        Total {"articles" if processing_stage == "stage1" or processing_stage == "stage2" else "users"} processed: {total_articles}
-        Total {"articles" if processing_stage == "stage1" or processing_stage == "stage2" else "users"} skipped: {total_skipped}
-        Total {"articles" if processing_stage == "stage1" or processing_stage == "stage2" else "users"} with errors: {len(error_articles)}
+    for stage in stages:
+        # Fetch the correct column names from the batch record
+        total_processed = batch.get(f"{stage}_processed", 0)
+        total_skipped = batch.get(f"{stage}_skipped", 0)
+        errors = batch.get(f"{stage}_errors", [])
 
-        {"Articles" if processing_stage == "stage1" or processing_stage == "stage2" else "Users"} with errors:
-        """
-    
-    for article in error_articles:
-        body += f"- URL: {article['url']}\n  Error: {article['error']}\n"
+        # Determine whether to use "articles" or "users"
+        entity = "articles" if stage in ["stage1", "stage2"] else "users"
+
+        body += f"Stage {stage}:\n"
+        body += f"Total {entity} processed: {total_processed}\n"
+        body += f"Total {entity} skipped: {total_skipped}\n"
+        body += f"Total {entity} with errors: {len(errors)}\n\n"
+
+        if errors:
+            body += f"{entity.capitalize()} with errors:\n"
+            for error in errors:
+                body += f"- Error: {error}\n"
+            body += "\n"
 
     send_email(config.ADMIN_EMAIL, subject, body)
 

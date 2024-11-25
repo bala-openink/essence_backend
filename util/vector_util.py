@@ -87,7 +87,7 @@ def deduplicate_articles(articles):
     for i in range(len(articles)):
         if i in original_articles:
             for j in range(i + 1, len(articles)):
-                if j in original_articles and similarity_matrix[i][j] > 0.80:
+                if j in original_articles and similarity_matrix[i][j] > 0.85:
                     logger.info(f"Duplicate found: {articles[i]['title']} and {articles[j]['title']} with similarity {similarity_matrix[i][j]:.4f}")
                     # Store only essential fields for duplicate article
                     if articles[i]['date_published'] < articles[j]['date_published']:

@@ -200,7 +200,8 @@ def get_latest_news_v2(
         user_id=user.id,
         start_date=start_date,
         end_date=end_date,
-        limit=limit
+        limit=limit,
+        max_attempts=5
     )
 
     if articles:

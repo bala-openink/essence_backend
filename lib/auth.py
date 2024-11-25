@@ -1,7 +1,7 @@
 from flask_jwt_extended import create_access_token, decode_token, get_jwt_identity
 from datetime import datetime, timedelta
 import uuid
-from lib.email_service import send_email
+from util.email_util import send_email
 from services import utilities
 from lib.log import logger
 from config import JWT_EXPIRATION_DELTA

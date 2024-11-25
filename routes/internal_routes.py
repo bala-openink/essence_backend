@@ -1,17 +1,14 @@
 from flask import Blueprint, request, jsonify, send_file
 from lib.log import logger
 import uuid
-from util import llm_util
-from util import vector_util
-from opensearchpy import OpenSearch
-import numpy as np
 import json
 from datetime import datetime, timedelta
 import csv
 import threading
 import time
-import copy
 import os
+
+import config
 from services import podcaster
 from io import BytesIO
 from models.user import User
@@ -19,12 +16,12 @@ from uuid import uuid4
 from lib.validators import validate_email
 from werkzeug.exceptions import BadRequest
 from services import utilities
-from services.user_management import update_user_preferences
 from services import user_news
-from util import date_util
 from models.audio_story_request import AudioStoryRequest
 from db.factory import db_factory
 from services import user_feed
+from util import string_util, llm_util, date_util
+
 internal_bp = Blueprint("internal", __name__)
 
 user_repository = db_factory.get_user_repository()
@@ -35,7 +32,7 @@ user_feed_repo = db_factory.get_user_feed_repository()
 
 @internal_bp.route("/generate_custom_podcast", methods=["POST"])
 def generate_custom_podcast():
-    request_id = str(uuid.uuid4())
+    request_id = string_util.generate_request_id()
     logger.info(f"generate_custom_podcast route - Request ID: {request_id}")
     try:
         data = request.json
@@ -59,6 +56,8 @@ def generate_custom_podcast():
 
         search_query = data["search_query"]
         narrative_prompt = data.get("narrative_prompt", search_query)
+        hosts = data.get("hosts", "Harry and Emily")
+        email = data.get("email", config.ADMIN_EMAIL)
         duration_minutes = int(data["duration_minutes"])
         start_date = data.get(
             "start_date", 
@@ -88,59 +87,7 @@ def generate_custom_podcast():
         logger.debug(f"Query vector shape: {query_vector.shape}")
         logger.debug(f"Query vector sample (first 5 elements): {query_vector[:5]}")
 
-        query = {
-            "size": 20,
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"term": {"processing_status": "audio_summary_generated"}}
-                    ]
-                }
-            },
-            "sort": [{"date_published": "desc"}]
-        }
-
-        if start_date or end_date:
-            date_range = {"range": {"date_published": {}}}
-            if start_date:
-                date_range["range"]["date_published"]["gte"] = start_date
-            if end_date:
-                date_range["range"]["date_published"]["lte"] = end_date
-            query["query"]["bool"]["filter"].append(date_range)
-
-        query["query"] = {
-            "script_score": {
-                "query": query["query"],
-                "script": {
-                    "source": "cosineSimilarity(params.query_vector, doc['summary_vector']) + 1.0",
-                    "params": {"query_vector": query_vector.tolist()}
-                }
-            }
-        }
-        query["sort"] = [{"_score": "desc"}, {"date_published": "desc"}]
-
-        logger.info(
-            f"Querying OpenSearch for articles between {start_date} and {end_date} - Request ID: {request_id}"
-        )
-
-        # Log the full query for debugging
-        debug_query = copy.deepcopy(query)
-        debug_query['query']['script_score']['script']['params']['query_vector'] = '[vector truncated]'
-        logger.debug(f"OpenSearch query: {json.dumps(debug_query, indent=2)}")
-
-        articles = []
-        try:
-            response = article_repo.search(query)
-            logger.debug(f"OpenSearch response: {json.dumps(response, indent=2)}")
-            articles = [hit["_source"] for hit in response["hits"]["hits"]]
-
-        except Exception as e:
-            logger.error(f"OpenSearch error details - Request ID: {request_id}")
-            logger.error(f"Error type: {type(e)}")
-            logger.error(f"Error message: {str(e)}")
-            if hasattr(e, 'info'):
-                logger.error(f"Error info: {json.dumps(e.info, indent=2)}")
-            raise        
+        articles = article_repo.query_by_vector(query_vector.tolist(), start_date, end_date, limit=20)
 
         logger.info(
             f"Found {len(articles)} relevant articles - Request ID: {request_id}"
@@ -155,7 +102,7 @@ def generate_custom_podcast():
         logger.debug(f"Retrieved articles - Request ID: {request_id}:")
         for idx, article in enumerate(articles, 1):
             logger.debug(
-                f"{idx}. {article.get('title', 'No title')} ({article.get('date_published', 'No date')})"
+                f"{idx}. {article.get('score', 0)} - {article.get('title', 'No title')} ({article.get('date_published', 'No date')})"
             )
 
         # Prepare articles summary
@@ -171,10 +118,12 @@ def generate_custom_podcast():
             ]
         )
 
+        logger.debug(f"Articles summary: {articles_summary}")
+
         # Create narrative prompt
         logger.info(f"Creating podcast narrative prompt - Request ID: {request_id}")
         podcast_prompt = f"""
-        Create a natural, engaging podcast conversation between the hosts, Harry and Emily using all the relevant articles provided. 
+        Create a natural, engaging podcast conversation between the hosts, {hosts} using all the relevant articles provided. 
 
         Key requirements:
         Target duration: {duration_minutes} minutes (approximately {duration_minutes * 120} words)
@@ -185,40 +134,15 @@ def generate_custom_podcast():
 
         # Generate the podcast conversation
         logger.info(f"Generating podcast conversation - Request ID: {request_id}")
-        audioStoryRequest = AudioStoryRequest(
-            id=request_id,
-            text_summary=articles_summary,
-            length="long",
-            language=language,
-            region=region,
-            two_speakers=True,
-            user_name=None,
-            previous_article=None,
-            new_instructions=podcast_prompt,
-        )
 
         logger.info(f"Generating audio for podcast - Request ID: {request_id}")
         start_time = time.time()
-        podcast_audio, conversation = podcaster.generate_audio_story(audioStoryRequest)
+        conversation_raw = llm_util.chat_with_openai(articles_summary, podcast_prompt)
+        conversation = llm_util.extract_json_from_llm_response(conversation_raw)
         logger.info(f"Conversation: {conversation}")
-        generation_time = time.time() - start_time
-        logger.info(
-            f"Audio generation completed in {generation_time:.2f} seconds - Request ID: {request_id}"
-        )
 
-        # Convert to bytes and prepare response
-        logger.info(f"Preparing audio response - Request ID: {request_id}")
-        audio_bytes = BytesIO()
-        podcast_audio.export(audio_bytes, format="mp3")
-        audio_bytes.seek(0)
-
-        logger.info(f"Successfully generated custom podcast - Request ID: {request_id}")
-        return send_file(
-            audio_bytes,
-            mimetype="audio/mpeg",
-            as_attachment=True,
-            download_name=f"custom_podcast_{request_id}.mp3",
-        )
+        utilities.background_task('services.podcaster.create_audio_in_background', conversation, language, add_background=True, request_id=request_id, email=email)
+        return jsonify({"message": "Audio processing started in background", "request_id": request_id, "conversation": conversation}), 202
 
     except Exception as e:
         logger.error(
@@ -949,7 +873,7 @@ def create_audio():
         add_background = data.get("add_background", False)  # Optional parameter
 
         # Generate audio segments
-        audio_segment = podcaster.create_audio_segments(
+        audio_segment = podcaster.create_audio_for_conversation(
             conversation=conversation,
             language=language,
             add_background=add_background
