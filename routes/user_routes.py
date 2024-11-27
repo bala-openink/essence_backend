@@ -9,7 +9,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_tok
 from services import utilities
 from models.user import User
 from db.factory import db_factory
-from util import string_util
+from util import string_util, email_util
 from routes.decorators import custom_jwt_required
 
 user_bp = Blueprint('user', __name__)
@@ -23,22 +23,40 @@ def signup():
 @user_bp.route('/signin', methods=['POST'])
 def signin():
     logger.info("signin route")
-    data = request.json
-    email, first_name, country, language, preferences = validate_signin_data(data)
-    
-    user = user_repository.get_by_email(email)
-    
-    if not user:
-        return handle_new_user(email, first_name, country, language, preferences)
-    
-    if user.status == 'verified':
-        if data:
-            device_jti = data.get('device_jti')
-            if device_jti and any(t['jti'] == device_jti for t in user.tokens):
-                return handle_verified_user(user, preferences, device_jti)
+    try:
+        data = request.json
+        email, first_name, country, language, preferences = validate_signin_data(data)
+        
+        user = user_repository.get_by_email(email)
+        
+        if not user:
+            logger.error(f"User not found: {email}")
+            email_util.send_new_user_notification(email)
+            return jsonify({
+                "error": "User not found",
+                "message": "Authentication failed"
+        }), 401
 
-    # New device or no device_jti provided or unverified user. Treat as unverified user.
-    return handle_unverified_user(user, email, preferences)
+        
+        if user.status == 'verified':
+            if data:
+                device_jti = data.get('device_jti')
+                if device_jti and any(t['jti'] == device_jti for t in user.tokens):
+                    return handle_verified_user(user, preferences, device_jti)
+
+        # New device or no device_jti provided or unverified user. Treat as unverified user.
+        return handle_unverified_user(user, email, preferences)
+    except (BadRequest, Unauthorized) as e:
+        return jsonify({
+            "error": str(e),
+            "message": "Authentication failed"
+        }), 401
+    except Exception as e:
+        logger.error(f"Unexpected error in signin: {str(e)}")
+        return jsonify({
+            "error": "Internal server error",
+            "message": "An unexpected error occurred"
+        }), 500
 
 def validate_signin_data(data):
     email = data.get('email')

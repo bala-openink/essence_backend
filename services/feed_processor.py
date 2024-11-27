@@ -11,9 +11,7 @@ from util import llm_util, date_util
 from lib.log import logger
 from services import podcaster
 from models.audio_story_request import AudioStoryRequest
-from util.email_util import send_email
-from util import llm_util
-from util import vector_util
+from util import llm_util, email_util, vector_util
 import config
 from util import string_util
 from services import user_feed
@@ -475,37 +473,11 @@ def process_stage3(batch_id=None, user_offset=0, batch_size=10):
             # Send final summary email
             batch = feed_batch_repo.get_batch(batch_id) if batch_id else None
             if batch:
-                send_processing_summary_email(batch)
+                email_util.send_processing_summary_email(batch)
             return
 
     except Exception as e:
         error_msg = f"Error in process_stage3: {str(e)}"
         logger.error(error_msg)
 
-def send_processing_summary_email(batch):
-    subject = f"Env::{config.STAGE}, Essence Feed Processing Summary"
-    stages = ["stage1", "stage2", "stage3"]
-    body = "Feed processing completed.\n\n"
-
-    for stage in stages:
-        # Fetch the correct column names from the batch record
-        total_processed = batch.get(f"{stage}_processed", 0)
-        total_skipped = batch.get(f"{stage}_skipped", 0)
-        errors = batch.get(f"{stage}_errors", [])
-
-        # Determine whether to use "articles" or "users"
-        entity = "articles" if stage in ["stage1", "stage2"] else "users"
-
-        body += f"Stage {stage}:\n"
-        body += f"Total {entity} processed: {total_processed}\n"
-        body += f"Total {entity} skipped: {total_skipped}\n"
-        body += f"Total {entity} with errors: {len(errors)}\n\n"
-
-        if errors:
-            body += f"{entity.capitalize()} with errors:\n"
-            for error in errors:
-                body += f"- Error: {error}\n"
-            body += "\n"
-
-    send_email(config.ADMIN_EMAIL, subject, body)
 

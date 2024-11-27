@@ -141,7 +141,7 @@ def generate_custom_podcast():
         conversation = llm_util.extract_json_from_llm_response(conversation_raw)
         logger.info(f"Conversation: {conversation}")
 
-        utilities.background_task('services.podcaster.create_audio_in_background', conversation, language, add_background=True, request_id=request_id, email=email)
+        utilities.background_task('services.podcaster.create_audio_in_background', conversation, language, add_background=False, request_id=request_id, email=email)
         return jsonify({"message": "Audio processing started in background", "request_id": request_id, "conversation": conversation}), 202
 
     except Exception as e:
