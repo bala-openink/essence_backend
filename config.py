@@ -1,7 +1,7 @@
 import os
 
 
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'LOCAL')  # Default to 'LOCAL' if not set
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'local')  # Default to 'LOCAL' if not set
 STAGE = os.environ.get('STAGE', 'local')
 
 JWT_EXPIRATION_DELTA=604800

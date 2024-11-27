@@ -46,7 +46,6 @@ class User:
             'language': self.language,
             'status': self.status,
             'verification_code': self.verification_code,
-            'tokens': self.tokens,
             'preferences': preferences_dict,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),

@@ -15,8 +15,8 @@ def setup_logger():
         handler = logging.StreamHandler(sys.stdout)
         
         # Determine the default log level based on the environment
-        environment = os.getenv('ENVIRONMENT', 'LOCAL')
-        default_log_level = 'DEBUG' if environment == 'LOCAL' else 'INFO'
+        environment = os.getenv('ENVIRONMENT', 'local')
+        default_log_level = 'DEBUG' if environment == 'local' else 'INFO'
         
         # Set the handler level based on LOG_LEVEL environment variable, 
         # falling back to the default determined by the environment

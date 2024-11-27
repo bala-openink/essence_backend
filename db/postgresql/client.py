@@ -22,7 +22,7 @@ class PostgreSQLClient(DatabaseClient):
         
     def connect(self) -> 'PostgreSQLClient':
         try:
-            if self._environment == 'LOCAL':
+            if self._environment == 'local':
                 pg_password = config.PG_PASSWORD
             else:
                 pg_password = utilities.get_secret(secret_key='PG_PASSWORD', default_value=config.PG_PASSWORD)

@@ -393,6 +393,41 @@ def add_bg_for_intro(audio: AudioSegment):
     logger.debug("Added background music successfully...")  # Changed from info to debug
     return podcast_audio
 
+def get_or_create_first_intro_audio(user):
+    if not user.intro_audio_urls or not isinstance(user.intro_audio_urls, dict) or len(user.intro_audio_urls) == 0:
+        intro_segment = generate_intro_audio(
+            userName=user.first_name,
+            isFirstTimeEver=True,
+            isFirstTimeToday=True,
+            timeOfDay="day",
+            twoSpeakers=True,
+        )
+
+        intro_audio = BytesIO()
+        intro_segment.export(intro_audio, format="mp3")
+        intro_audio.seek(0)
+
+        audio_urls = {}
+
+        key = f"{True}_{True}_day"
+        s3_key = f"{user.id}/intro/{key}"
+        s3_url = utilities.upload_audio_to_s3(s3_key, intro_audio)
+        audio_urls[key] = s3_url
+        logger.info(
+            f"Created intro audio file for {s3_key} and uploaded to {s3_url}"
+        )
+
+        # Update the database after the first audio file is created
+        user.intro_audio_urls = audio_urls
+        user_repository.update(user)
+        logger.info(f"Updated user {user.id} with first intro audio URL")
+        intro_audio_url = s3_url
+    else:
+        key = f"{True}_{True}_day"
+        intro_audio_url = user.intro_audio_urls.get(key, next(iter(user.intro_audio_urls.values())))
+        logger.info(f"User {user.id} already has intro audio URLs")
+
+    return utilities.generate_audio_url_public(intro_audio_url)
 
 def generate_intro_audio_files(user_name, user_id):
     logger.info(f"Generating intro audio files for user {user_id}")
@@ -402,8 +437,13 @@ def generate_intro_audio_files(user_name, user_id):
             raise BadRequest("User not found")
 
         # If user doesn't have intro_audio_urls or only the first intro audio is generated, generate them again
-        if not user.intro_audio_urls or len(user.intro_audio_urls) < 2:
+        if not user.intro_audio_urls or not isinstance(user.intro_audio_urls, dict) or len(user.intro_audio_urls) < 2:
             combinations = [
+                {
+                    "is_first_time_ever": True,
+                    "is_first_time_today": True,
+                    "time_of_day": "day",
+                },
                 {
                     "is_first_time_ever": True,
                     "is_first_time_today": True,
@@ -418,11 +458,6 @@ def generate_intro_audio_files(user_name, user_id):
                     "is_first_time_ever": True,
                     "is_first_time_today": True,
                     "time_of_day": "evening",
-                },
-                {
-                    "is_first_time_ever": True,
-                    "is_first_time_today": True,
-                    "time_of_day": "day",
                 },
                 {
                     "is_first_time_ever": False,
@@ -467,7 +502,6 @@ def generate_intro_audio_files(user_name, user_id):
             ]
 
             audio_urls = {}
-            first_audio_created = False
 
             for combo in combinations:
                 intro_segment = generate_intro_audio(
@@ -489,13 +523,6 @@ def generate_intro_audio_files(user_name, user_id):
                 logger.info(
                     f"Created intro audio file for {s3_key} and uploaded to {s3_url}"
                 )
-
-                # Update the database after the first audio file is created
-                if not first_audio_created:
-                    user.intro_audio_urls = audio_urls
-                    user_repository.update(user)
-                    first_audio_created = True
-                    logger.info(f"Updated user {user_id} with first intro audio URL")
 
             # Update the user with all audio URLs
             user.intro_audio_urls = audio_urls

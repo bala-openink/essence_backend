@@ -6,7 +6,7 @@ from lib.auth import generate_token, verify_token, send_verification_email, gene
 from lib.validators import validate_email, validate_country, validate_language
 from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, decode_token, get_jwt, verify_jwt_in_request
 
-from services import utilities
+from services import utilities, podcaster
 from models.user import User
 from db.factory import db_factory
 from util import string_util, email_util
@@ -86,12 +86,15 @@ def handle_new_user(email, first_name, country, language, preferences):
 
     logger.info(f"Sending verification email to {email}, with code {user.verification_code}")
     send_verification_email(email, user.verification_code)
+    # Generate first intro audio in the same thread
+    intro_audio = podcaster.get_or_create_first_intro_audio(user)
+    # Generate rest of the intro audio files in the background
     utilities.background_task('services.podcaster.generate_intro_audio_files', user.first_name, user.id)
 
     if preferences:
         utilities.background_task('services.user_management.update_user_preferences', user.id, preferences)
     
-    return jsonify({"isNewUser": True, "verificationRequired": True, "message": "Verification code sent to email"}), 202
+    return jsonify({"isNewUser": True, "verificationRequired": True, "message": "Verification code sent to email", "intro_audio": intro_audio}), 202
 
 def handle_verified_user(user, preferences, device_jti=None):
     logger.debug(f"handle_verified_user: {user.email}")
@@ -101,8 +104,9 @@ def handle_verified_user(user, preferences, device_jti=None):
     if preferences:
         utilities.background_task('services.user_management.update_user_preferences', user.id, preferences)
 
-    
-    return jsonify({"token": new_token, "message": "Login successful"}), 200
+    intro_audio = podcaster.get_or_create_first_intro_audio(user)
+
+    return jsonify({"token": new_token, "message": "Login successful", "intro_audio": intro_audio}), 200
 
 def handle_unverified_user(user, email, preferences):
     logger.debug(f"Handling unverified user: {user.email}")
@@ -116,7 +120,9 @@ def handle_unverified_user(user, email, preferences):
     if preferences:
         utilities.background_task('services.user_management.update_user_preferences', user.id, preferences)
     
-    return jsonify({"isNewUser": False, "verificationRequired": True, "message": "Verification code sent to email"}), 202
+    intro_audio = podcaster.get_or_create_first_intro_audio(user)
+
+    return jsonify({"isNewUser": False, "verificationRequired": True, "message": "Verification code sent to email", "intro_audio": intro_audio}), 202
 
 @user_bp.route('/verify', methods=['POST'])
 def verify():
@@ -147,7 +153,11 @@ def verify():
     utilities.background_task('services.user_feed.create_feeds_for_user', user.id)
 
     token, device_jti = generate_token(user.id)
-    return jsonify({"token": token, "device_jti": device_jti, "message": "Email verified successfully"}), 200
+
+    user_dict = user.to_dict()
+    user_dict.pop('verification_code')
+
+    return jsonify({"token": token, "device_jti": device_jti, "message": "Email verified successfully", "user": user_dict}), 200
 
 @user_bp.route('/generate_intro_audio', methods=['POST'])
 def generate_intro_audio():
@@ -271,4 +281,3 @@ def update_preferences():
 
 
     return jsonify({"message": "Preferences update initiated"}), 202
-

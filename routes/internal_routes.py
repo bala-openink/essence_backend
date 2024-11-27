@@ -509,6 +509,7 @@ def create_user_from_form():
         # Process preferences
         preferences = process_form_preferences(data)
 
+        utilities.background_task('services.podcaster.generate_intro_audio_files', user.first_name, user.id)
         # Update user preferences
         utilities.background_task('services.user_management.update_user_preferences', user.id, json.dumps(preferences))
 
