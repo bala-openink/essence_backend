@@ -30,7 +30,7 @@ docker run -d \
 
 
 2. Run gunicorn server locally on port 4000 (not using docker for faster troubleshooting)
-> gunicorn -b 0.0.0.0:4000 --workers 1  app:app
+> gunicorn --timeout 600 --bind 0.0.0.0:4000 --workers 1  app:app
 
 To point to the local server via ngrok
 > ngrok http http://localhost:4000

@@ -20,7 +20,7 @@ from services import user_news
 from models.audio_story_request import AudioStoryRequest
 from db.factory import db_factory
 from services import user_feed
-from util import string_util, llm_util, date_util
+from util import string_util, llm_util, date_util, vector_util
 
 internal_bp = Blueprint("internal", __name__)
 
@@ -80,7 +80,7 @@ def generate_custom_podcast():
         logger.info(
             f"Generating embedding for search query: '{search_query}' - Request ID: {request_id}"
         )
-        query_vector = llm_util.get_embedding_for_text(search_query)
+        query_vector = vector_util.get_embedding_for_text(search_query)
 
         # Debug vector properties
         logger.debug(f"Query vector type: {type(query_vector)}")

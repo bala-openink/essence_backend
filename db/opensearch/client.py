@@ -88,7 +88,7 @@ class OpenSearchClient(DatabaseClient):
                     "article_id": {"type": "keyword"},
                     "summary_vector": {
                         "type": "knn_vector",
-                        "dimension": 1536
+                        "dimension": constants.EMBEDDING_DIMENSION
                     },
                     "summary_200": {"type": "text"},
                     "summary_50": {"type": "text"},

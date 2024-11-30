@@ -11,13 +11,17 @@ from .dynamodb.repository import DynamoDBRepository
 from .dynamodb.feed_batch_repository import DynamoDBFeedBatchRepository
 from .postgresql.user_feed_repository import PostgreSQLUserFeedRepository
 from .postgresql.feed_batch_repository import PostgreSQLFeedBatchRepository
-
+from lib.log import logger
 class DatabaseFactory:
     """Factory for creating database repositories"""
     
     def __init__(self):
         self.stage = config.STAGE
         self.environment = config.ENVIRONMENT
+        self.search_stage = config.STAGE
+        self.search_environment = config.ENVIRONMENT
+        self.search_stage = "live"
+        self.search_environment = "production"
         self._dynamo_client = None
         self._opensearch_client = None
         self._postgres_client = None
@@ -36,8 +40,8 @@ class DatabaseFactory:
     def opensearch_client(self) -> OpenSearchClient:
         if not self._opensearch_client:
             self._opensearch_client = OpenSearchClient(
-                local=(self.environment == 'local'),
-                stage=self.stage
+                local=(self.search_environment == 'local'),
+                stage=self.search_stage
             ).connect()
         return self._opensearch_client
         
@@ -78,7 +82,7 @@ class DatabaseFactory:
         if key not in self._repositories:
             self._repositories[key] = OpenSearchArticleRepository(
                 self.opensearch_client.get_client(),
-                f"{config.OPENSEARCH_INDEX}_{self.stage}"
+                f"{config.OPENSEARCH_INDEX}_{self.search_stage}"
             )
         return self._repositories[key]
 

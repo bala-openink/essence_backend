@@ -25,27 +25,22 @@ def signin():
     logger.info("signin route")
     try:
         data = request.json
-        email, first_name, country, language, preferences = validate_signin_data(data)
+        email, first_name, country, language = validate_signin_data(data)
         
         user = user_repository.get_by_email(email)
         
         if not user:
-            logger.error(f"User not found: {email}")
             email_util.send_new_user_notification(email)
-            return jsonify({
-                "error": "User not found",
-                "message": "Authentication failed"
-        }), 401
-
+            return handle_new_user(email, first_name, country, language)
         
         if user.status == 'verified':
             if data:
                 device_jti = data.get('device_jti')
                 if device_jti and any(t['jti'] == device_jti for t in user.tokens):
-                    return handle_verified_user(user, preferences, device_jti)
+                    return handle_verified_user(user, device_jti)
 
         # New device or no device_jti provided or unverified user. Treat as unverified user.
-        return handle_unverified_user(user, email, preferences)
+        return handle_unverified_user(user, email)
     except (BadRequest, Unauthorized) as e:
         return jsonify({
             "error": str(e),
@@ -63,7 +58,6 @@ def validate_signin_data(data):
     first_name = data.get('first_name')
     country = data.get('country')
     language = data.get('language')
-    preferences = data.get('preferences')
 
     if not all([email, first_name, country, language]):
         raise BadRequest("Missing required fields")
@@ -77,10 +71,10 @@ def validate_signin_data(data):
     if not validate_language(language):
         raise BadRequest("Invalid language code")
 
-    return email.lower(), first_name.capitalize(), country.upper(), language.upper(), preferences
+    return email.lower(), first_name.capitalize(), country.upper(), language.upper()
 
-def handle_new_user(email, first_name, country, language, preferences):
-    logger.debug(f"handle_new_user: {email}, {first_name}, {country}, {language}, {preferences}")
+def handle_new_user(email, first_name, country, language):
+    logger.debug(f"handle_new_user: {email}, {first_name}, {country}, {language}")
     user = User(email, first_name, country, language, verification_code=generate_verification_code())
     user_repository.add(user)
 
@@ -91,24 +85,18 @@ def handle_new_user(email, first_name, country, language, preferences):
     # Generate rest of the intro audio files in the background
     utilities.background_task('services.podcaster.generate_intro_audio_files', user.first_name, user.id)
 
-    if preferences:
-        utilities.background_task('services.user_management.update_user_preferences', user.id, preferences)
-    
     return jsonify({"isNewUser": True, "verificationRequired": True, "message": "Verification code sent to email", "intro_audio": intro_audio}), 202
 
-def handle_verified_user(user, preferences, device_jti=None):
+def handle_verified_user(user, device_jti=None):
     logger.debug(f"handle_verified_user: {user.email}")
     
     new_token, _ = generate_token(user.id, device_jti)
     
-    if preferences:
-        utilities.background_task('services.user_management.update_user_preferences', user.id, preferences)
-
     intro_audio = podcaster.get_or_create_first_intro_audio(user)
 
     return jsonify({"token": new_token, "message": "Login successful", "intro_audio": intro_audio}), 200
 
-def handle_unverified_user(user, email, preferences):
+def handle_unverified_user(user, email):
     logger.debug(f"Handling unverified user: {user.email}")
     user.verification_code = generate_verification_code()
     user.status = 'unverified'
@@ -116,9 +104,6 @@ def handle_unverified_user(user, email, preferences):
     
     logger.info(f"Sending verification email to {email}, with code {user.verification_code}")
     send_verification_email(email, user.verification_code)
-    
-    if preferences:
-        utilities.background_task('services.user_management.update_user_preferences', user.id, preferences)
     
     intro_audio = podcaster.get_or_create_first_intro_audio(user)
 
@@ -154,10 +139,7 @@ def verify():
 
     token, device_jti = generate_token(user.id)
 
-    user_dict = user.to_dict()
-    user_dict.pop('verification_code')
-
-    return jsonify({"token": token, "device_jti": device_jti, "message": "Email verified successfully", "user": user_dict}), 200
+    return jsonify({"token": token, "device_jti": device_jti, "message": "Email verified successfully", "user": _user_for_transport(user)}), 200
 
 @user_bp.route('/generate_intro_audio', methods=['POST'])
 def generate_intro_audio():
@@ -238,25 +220,49 @@ def update_preferences():
     if not data:
         raise BadRequest("Missing preferences")
     
-    preferences_text = data.get('preferences_text')
+    # Preferences dict is flexible that it can handle any additional fields provided by the client
+    # Add to special_fields for the fields that needs special handling, and everything else will be put in preferences dict
+    preferences = {}
+    special_fields = ['preferences_text', 'first_name', 'country', 'language', 'news_sources']
+    
+    # Handle all non-special fields
+    for key, value in data.items():
+        if key not in special_fields:
+            preferences[key] = value
+    
+    # Convert preferences dict to text if not empty
+    if preferences:
+        preferences_text = str(preferences)
+    else:
+        preferences_text = data.get('preferences_text')
+    
     first_name = data.get('first_name')
     country = data.get('country')
     language = data.get('language')
     news_sources = data.get('news_sources')
     
+    trigger_feed_update = False
+
     if(first_name):
         # check if first name is a valid string with no special characters and atleast 3 characters
         if not first_name.isalpha() or len(first_name) < 3:
             raise BadRequest("Invalid first name")
         user.first_name = first_name
+        utilities.background_task('services.podcaster.generate_intro_audio_files', first_name, user_id)
     if(country):
-        if not validate_country(country):
-            raise BadRequest("Invalid country code")
-        user.country = country
+        try:
+            country_name, country_code = validate_country(country)
+            user.country = country_code
+            user.country_name = country_name
+        except ValueError as e:
+            raise BadRequest(str(e))
     if(language):
-        if not validate_language(language):
-            raise BadRequest("Invalid language code")
-        user.language = language
+        try:
+            language_name, language_code = validate_language(language)
+            user.language = language_code
+            user.language_name = language_name
+        except ValueError as e:
+            raise BadRequest(str(e))
 
     if news_sources:
         if not hasattr(user, 'news_sources') or not isinstance(user.news_sources, list):
@@ -270,7 +276,7 @@ def update_preferences():
             domain = string_util.extract_domain(news_sources)
             if domain and domain not in user.news_sources:  # Check if domain doesn't exist
                 user.news_sources.append(domain)
-        utilities.background_task('services.user_feed.create_feeds_for_user', user.id)
+        trigger_feed_update = True
 
     if(first_name or country or language or news_sources):
         user_repository.update(user)
@@ -279,5 +285,17 @@ def update_preferences():
         # Trigger background task to update user preferences
         utilities.background_task('services.user_management.update_user_preferences', user_id, preferences_text)
 
+    # Trigger feed update only if there are no preferences_text provided
+    # This is to avoid triggering feed update twice when preferences_text is provided
+    if trigger_feed_update and not preferences_text:
+        utilities.background_task('services.user_feed.create_feeds_for_user', user_id)
 
     return jsonify({"message": "Preferences update initiated"}), 202
+
+def _user_for_transport(user):
+    user_dict = user.to_dict()
+    if user.intro_audio_urls:
+        intro_audios = {key: utilities.generate_audio_url_public(url) for key, url in user.intro_audio_urls.items()}
+        user_dict['intro_audio_urls'] = intro_audios
+    user_dict.pop('verification_code')
+    return user_dict

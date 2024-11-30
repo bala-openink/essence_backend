@@ -1,7 +1,13 @@
+# External imports
 import numpy as np
+from services.openai_service import openai_service
+import datetime
+
+# Project imports
 from util import llm_util
 from lib.log import logger
-import datetime
+import constants
+
 
 # Compute the cosine similarity matrix for a given matrix A
 def cosine_similarity(A):
@@ -32,7 +38,7 @@ def cosine_similarity_vector(A, B):
 
 def create_flat_embedding(text):
     logger.debug(f"create_flat_embedding >> Text :: {text}")
-    embedding = llm_util.get_base_embedding(text)
+    embedding = get_base_embedding(text)
     embedding = embedding / np.linalg.norm(embedding)
     logger.debug(f"create_flat_embedding >> Embedding :: {embedding.shape}")
     return embedding
@@ -58,7 +64,7 @@ def generate_weighted_embeddings(values, priority_order, dimension):
     embeddings = {}
     for index, value in enumerate(values):
         context = f"{dimension}: {value}"
-        embedding = llm_util.get_base_embedding(context)
+        embedding = get_base_embedding(context)
         if priority_order:
             weight = (len(values) - index) / len(values)
             embedding *= weight
@@ -135,3 +141,160 @@ def sort_by_preference_vector(articles, preference_vector, descending=True):
     
     # Sort by score in descending order
     return sorted(articles, key=lambda x: x.get('score'), reverse=descending)
+
+# Embed the user preferences and normalize it - Entry point for user embeddings
+def get_user_embedding_with_weights(user_preferences, user, model="text-embedding-3-small"):
+    start_time = datetime.datetime.now()
+    logger.info(f"Starting user embedding generation at {start_time}")
+    try:
+        # Define weights for known dimensions
+        weighted_dimensions = {
+            'industries': 0.3,
+            'regions': 0.2,
+            'functions': 0.2
+        }
+        
+        final_embedding = np.zeros(constants.EMBEDDING_DIMENSION)
+        content_weight = 0.3
+        
+        # Process all dimensions generically
+        all_values = []
+        for dim_name, dim_data in user_preferences.items():
+            # Skip metadata fields that end with _order or _exclusions
+            if dim_name.endswith('_order') or dim_name.endswith('_exclusions'):
+                continue
+                
+            values = dim_data if isinstance(dim_data, list) else []
+            order_key = f"{dim_name}_order"
+            excl_key = f"{dim_name}_exclusions"
+            
+            priority_order = user_preferences.get(order_key, False)
+            exclusions = user_preferences.get(excl_key, [])
+            
+            # Get embedding for this dimension
+            dim_embedding = get_dimension_embedding(values, exclusions, priority_order, model)
+            
+            if len(dim_embedding) > 0:
+                # Apply special weighting if it's a known dimension
+                if dim_name in weighted_dimensions:
+                    final_embedding += dim_embedding * weighted_dimensions[dim_name]
+                
+                # Collect values for combined content embedding
+                all_values.extend(values)
+        
+        # Add user's country to the region dimension if available
+        if user.country_name:
+            region_embedding = get_base_embedding(user.country_name, model)
+            final_embedding += region_embedding * weighted_dimensions['regions']
+        
+        # Add content embedding from all values combined
+        if all_values:
+            content_text = " ".join(all_values)
+            content_embedding = get_base_embedding(content_text, model)
+            final_embedding += content_embedding * content_weight
+            
+        # Normalize the final embedding if it's not all zeros
+        if not np.all(final_embedding == 0):
+            final_embedding = final_embedding / np.linalg.norm(final_embedding)
+            
+        end_time = datetime.datetime.now()
+        logger.info(f"User embedding generation completed at {end_time}. Took {end_time - start_time} seconds.")
+        return final_embedding
+    except Exception as e:
+        logger.error(f"Error in user weighted embedding generation: {str(e)}")
+        return np.array([])
+
+# Helper function to get weighted embeddings for a dimension
+def get_dimension_embedding(values, exclusions=None, priority_order=False, model="text-embedding-3-small"):
+    if not values:
+        return np.array([])
+        
+    # Handle positive embeddings with priority weights if needed
+    pos_embeddings = []
+    for idx, value in enumerate(values):
+        embedding = get_base_embedding(value, model)
+        if priority_order:
+            # Apply decreasing weights based on position
+            weight = (len(values) - idx) / len(values)
+            embedding *= weight
+        pos_embeddings.append(embedding)
+    
+    # Combine positive embeddings
+    pos_vector = np.mean(pos_embeddings, axis=0) if pos_embeddings else np.array([])
+    
+    # Handle exclusions if any
+    if exclusions:
+        neg_embeddings = [get_base_embedding(val, model) for val in exclusions]
+        neg_vector = np.mean(neg_embeddings, axis=0) if neg_embeddings else np.array([])
+        # Subtract negative embeddings from positive
+        if len(pos_vector) > 0 and len(neg_vector) > 0:
+            return pos_vector - neg_vector
+    
+    return pos_vector if len(pos_vector) > 0 else np.array([])
+
+# Embed the article summary and normalize it - Entry point for article embeddings
+def get_article_embedding_normalized(article, model="text-embedding-3-small"):
+    if not article:
+        return np.array([])
+    
+    embedding = get_article_embedding_with_weights(article.get("summary_200"), article.get("region"), article.get("categories"),
+                                            article.get("industry"), article.get("function"), model)
+    embedding_array = np.array(embedding)
+    if np.all(embedding_array == 0):
+        return embedding_array
+    return embedding_array / np.linalg.norm(embedding_array)
+
+def get_article_embedding_with_weights(text, region=None, categories=None, industry=None, function=None, model="text-embedding-3-small"):
+    try:
+        # Get separate embeddings for each component
+        content_embedding = get_base_embedding(text, model)
+        
+        # Initialize weights (these could be tuned)
+        content_weight = 0.5
+        region_weight = 0.1
+        industry_weight = 0.2
+        function_weight = 0.1
+        category_weight = 0.1
+        
+        final_embedding = content_embedding * content_weight
+        
+        if region:
+            region_embedding = get_base_embedding(region, model)
+            final_embedding += region_embedding * region_weight
+            
+        if categories:
+            # Get embedding for each category separately
+            category_embeddings = [get_base_embedding(cat, model) for cat in categories]
+            avg_category_embedding = np.mean(category_embeddings, axis=0)
+            final_embedding += avg_category_embedding * category_weight
+        
+        if industry:
+            industry_embedding = get_base_embedding(industry, model)
+            final_embedding += industry_embedding * industry_weight
+            
+        if function:
+            function_embedding = get_base_embedding(function, model)
+            final_embedding += function_embedding * function_weight
+            
+        # Normalize the final embedding
+        return final_embedding / np.linalg.norm(final_embedding)
+    except Exception as e:
+        logger.error(f"Error in weighted embedding generation: {str(e)}")
+        return np.array([])
+
+def get_base_embedding(text, model="text-embedding-3-small"):
+    try:
+        response = openai_service.client.embeddings.create(
+            input=[text.replace("\n", " ")], 
+            model=model
+        )
+        return np.array(response.data[0].embedding)
+    except Exception as e:
+        logger.error(f"Error generating embedding: {str(e)}")
+        return np.array([])
+
+
+def get_embedding_for_text(text, model="text-embedding-3-small"):
+    embedding = get_base_embedding(text, model)
+    return np.array(embedding) / np.linalg.norm(np.array(embedding))
+

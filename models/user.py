@@ -3,14 +3,16 @@ import uuid
 from decimal import Decimal
 
 class User:
-    def __init__(self, email, first_name, country, language, id=None, status='unverified',
+    def __init__(self, email, first_name, country, language, country_name=None, language_name=None, id=None, status='unverified',
                  verification_code=None, tokens=None, preferences=None, created_at=None, updated_at=None,
                  intro_audio_urls=None, category=None, news_sources=None):
         self.id = id or str(uuid.uuid4())
         self.email = email.lower()
         self.first_name = first_name.capitalize()
         self.country = country.upper()
+        self.country_name = country_name
         self.language = language.upper()
+        self.language_name = language_name
         self.status = status
         self.verification_code = verification_code
         self.tokens = tokens or []
@@ -43,7 +45,9 @@ class User:
             'email': self.email,
             'first_name': self.first_name,
             'country': self.country,
+            'country_name': self.country_name,
             'language': self.language,
+            'language_name': self.language_name,
             'status': self.status,
             'verification_code': self.verification_code,
             'preferences': preferences_dict,
@@ -60,7 +64,9 @@ class User:
             email=data['email'],
             first_name=data['first_name'],
             country=data.get('country'),
+            country_name=data.get('country_name'),
             language=data.get('language'),
+            language_name=data.get('language_name'),
             id=data['id'],
             status=data.get('status', 'unverified'),
             verification_code=data.get('verification_code'),
@@ -88,7 +94,9 @@ class User:
             'email': self.email,
             'first_name': self.first_name,
             'country': self.country,
+            'country_name': self.country_name,
             'language': self.language,
+            'language_name': self.language_name,
             'status': self.status,
             'verification_code': self.verification_code,
             'tokens': self.tokens,

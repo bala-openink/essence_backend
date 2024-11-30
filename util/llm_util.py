@@ -67,21 +67,6 @@ def chat_with_openai(text, instructions, model=constants.DEFAULT_MODEL, temperat
     logger.debug(f"Response :: {response}")
     return response
 
-def get_embedding_normalized(article, model="text-embedding-3-small"):
-    if not article:
-        return np.array([])
-    
-    embedding = get_embedding_with_weights(article.get("summary_200"), article.get("region"), article.get("categories"),
-                                            article.get("industry"), article.get("function"), model)
-    embedding_array = np.array(embedding)
-    if np.all(embedding_array == 0):
-        return embedding_array
-    return embedding_array / np.linalg.norm(embedding_array)
-
-def get_embedding_for_text(text, model="text-embedding-3-small"):
-    embedding = get_base_embedding(text, model)
-    return np.array(embedding) / np.linalg.norm(np.array(embedding))
-
 def convert_preferences_to_json(text):
 
     instructions = """
@@ -151,54 +136,6 @@ def process_user_intent(transcribed_text):
     
     return "unclear", "none", "I'm sorry, I didn't understand that. Could you please try again?"
 
-def get_embedding_with_weights(text, region=None, categories=None, industry=None, function=None, model="text-embedding-3-small"):
-    try:
-        # Get separate embeddings for each component
-        content_embedding = get_base_embedding(text, model)
-        
-        # Initialize weights (these could be tuned)
-        content_weight = 0.5
-        region_weight = 0.1
-        industry_weight = 0.2
-        function_weight = 0.1
-        category_weight = 0.1
-        
-        final_embedding = content_embedding * content_weight
-        
-        if region:
-            region_embedding = get_base_embedding(region, model)
-            final_embedding += region_embedding * region_weight
-            
-        if categories:
-            # Get embedding for each category separately
-            category_embeddings = [get_base_embedding(cat, model) for cat in categories]
-            avg_category_embedding = np.mean(category_embeddings, axis=0)
-            final_embedding += avg_category_embedding * category_weight
-        
-        if industry:
-            industry_embedding = get_base_embedding(industry, model)
-            final_embedding += industry_embedding * industry_weight
-            
-        if function:
-            function_embedding = get_base_embedding(function, model)
-            final_embedding += function_embedding * function_weight
-            
-        # Normalize the final embedding
-        return final_embedding / np.linalg.norm(final_embedding)
-    except Exception as e:
-        logger.error(f"Error in weighted embedding generation: {str(e)}")
-        return np.array([])
-
-def get_base_embedding(text, model="text-embedding-3-small"):
-    try:
-        response = openai_service.client.embeddings.create(
-            input=[text.replace("\n", " ")], 
-            model=model
-        )
-        return np.array(response.data[0].embedding)
-    except Exception as e:
-        logger.error(f"Error generating embedding: {str(e)}")
-        return np.array([])
     
 def rank_articles_by_importance(articles):
     start_time = time.time()
@@ -363,5 +300,4 @@ def estimate_tokens(text):
     # Add extra tokens for newlines and punctuation
     extra_tokens = text.count('\n') + text.count('.') + text.count(',') + text.count('!') + text.count('?')
     return int(base_estimate + extra_tokens)
-
 

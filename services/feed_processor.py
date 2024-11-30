@@ -6,12 +6,10 @@ import config
 import random
 
 from services import utilities
-from util import llm_util, date_util
-
 from lib.log import logger
 from services import podcaster
 from models.audio_story_request import AudioStoryRequest
-from util import llm_util, email_util, vector_util
+from util import llm_util, email_util, vector_util, date_util
 import config
 from util import string_util
 from services import user_feed
@@ -114,24 +112,6 @@ def process_stage1(feed, batch_id=None):
         logger.error(error_msg)
         return
     
-def update_batch_status(batch_id, stage, processed, skipped, errors):
-    try:
-        # Update batch using repository
-        success = feed_batch_repo.update_stage_status(
-            batch_id=batch_id,
-            stage=stage,
-            processed=processed,
-            skipped=skipped,
-            errors=errors
-        )
-        if success:
-            logger.info(f"Updated batch {batch_id} for {stage}")
-        else:
-            logger.error(f"Failed to update batch {batch_id} for {stage}")
-            
-    except Exception as e:
-        logger.error(f"Error updating batch status for {batch_id}: {str(e)}")
-
 # Parses the feed from rss.app
 def process_stage1_rssapp(source_name, category, feed_url):
     logger.info(f"process_stage1_rssapp for feed_url: {feed_url}")
@@ -272,7 +252,7 @@ def summarize_and_save(article):
         if(article['single_news_item']):
             article['processing_status'] = 'summaries_extracted'
             # Vectorize the summary and persist in OpenSearch
-            summary_vector = llm_util.get_embedding_normalized(article)
+            summary_vector = vector_util.get_article_embedding_normalized(article)
             article['summary_vector'] = summary_vector
         else:
             article['processing_status'] = 'discarded_after_summaries_extracted'

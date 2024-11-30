@@ -28,3 +28,13 @@ def extract_domain(url):
         return None
 
 
+def text_to_dict(text):
+    if text and isinstance(text, str):
+        try:
+            # Remove any leading/trailing whitespace and evaluate the string as a Python literal
+            cleaned_text = text.strip()
+            if cleaned_text.startswith('{') and cleaned_text.endswith('}'):
+                return eval(cleaned_text)
+        except Exception as e:
+            logger.warning(f"Could not convert text to dict: {str(e)}")
+        return None

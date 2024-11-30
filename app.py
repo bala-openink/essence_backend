@@ -1,6 +1,5 @@
-# This is done to load the environment variables from the .env file first thing before anyone uses it
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 from flask import Flask, request, jsonify, make_response, Response, stream_with_context
 from flask_cors import CORS
