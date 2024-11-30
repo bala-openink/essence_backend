@@ -149,7 +149,8 @@ def get_user_embedding_with_weights(user_preferences, user, model="text-embeddin
     try:
         # Define weights for known dimensions
         weighted_dimensions = {
-            'industries': 0.3,
+            'industry': 0.1,
+            'industries': 0.2,
             'regions': 0.2,
             'functions': 0.2
         }

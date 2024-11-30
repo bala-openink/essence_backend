@@ -141,6 +141,21 @@ def verify():
 
     return jsonify({"token": token, "device_jti": device_jti, "message": "Email verified successfully", "user": _user_for_transport(user)}), 200
 
+@user_bp.route('/get_user', methods=['GET'])
+@custom_jwt_required()
+def get_user():
+    logger.info("get_user route")
+    # Use user_id from kwargs if bypassed
+    user_id = getattr(g, 'user_id', None) or get_jwt_identity()
+
+    if not user_id:
+        raise BadRequest("User ID not found")
+
+    user = user_repository.get(user_id)
+    if not user:
+        raise BadRequest("User not found")
+    return jsonify(_user_for_transport(user)), 200
+
 @user_bp.route('/generate_intro_audio', methods=['POST'])
 def generate_intro_audio():
     logger.info("generate_intro_audio route")
