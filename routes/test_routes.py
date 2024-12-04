@@ -13,7 +13,20 @@ from io import BytesIO
 from threading import Thread
 from werkzeug.exceptions import BadRequest
 import constants
+
 test_bp = Blueprint('test', __name__)
+
+
+# Define your custom header name and value
+CUSTOM_HEADER_NAME = constants.INTERNAL_API_KEY_HEADER
+CUSTOM_HEADER_VALUE = utilities.get_secret(secret_key='INTERNAL_API_KEY', default_value="essence-local")
+
+# Apply the custom header check to all routes in the internal blueprint
+@test_bp.before_request
+def check_custom_header():
+    logger.info(f"Checking custom header: {request.headers.get(CUSTOM_HEADER_NAME)} == {CUSTOM_HEADER_VALUE}")
+    if request.headers.get(CUSTOM_HEADER_NAME) != CUSTOM_HEADER_VALUE:
+        return jsonify({"error": "Unauthorized access"}), 403
 
 article_repo = db_factory.get_article_repository()
 user_repo = db_factory.get_user_repository()

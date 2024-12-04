@@ -7,6 +7,7 @@ import csv
 import threading
 import time
 import os
+from functools import wraps
 
 import config
 from services import podcaster
@@ -21,8 +22,20 @@ from models.audio_story_request import AudioStoryRequest
 from db.factory import db_factory
 from services import user_feed
 from util import string_util, llm_util, date_util, vector_util
+import constants
 
 internal_bp = Blueprint("internal", __name__)
+
+# Define your custom header name and value
+CUSTOM_HEADER_NAME = constants.INTERNAL_API_KEY_HEADER
+CUSTOM_HEADER_VALUE = utilities.get_secret(secret_key='INTERNAL_API_KEY', default_value="essence-local")
+
+# Apply the custom header check to all routes in the internal blueprint
+@internal_bp.before_request
+def check_custom_header():
+    logger.info(f"Checking custom header: {request.headers.get(CUSTOM_HEADER_NAME)} == {CUSTOM_HEADER_VALUE}")
+    if request.headers.get(CUSTOM_HEADER_NAME) != CUSTOM_HEADER_VALUE:
+        return jsonify({"error": "Unauthorized access"}), 403
 
 user_repository = db_factory.get_user_repository()
 user_listen_history_repo = db_factory.get_generic_repository("user_listen_history")
@@ -201,34 +214,6 @@ def create_user_feed():
 def get_logged_in_user_id():
     # Implement user authentication and return the user ID
     return "jackson"
-
-@internal_bp.route("/categorize_articles", methods=["GET"])
-def categorize_articles():
-    request_id = str(uuid.uuid4())
-    logger.info(f"categorize_articles route - Request ID: {request_id}")
-    try:
-        # Get optional parameters
-        limit = request.args.get("limit", default=500, type=int)
-        processing_status = request.args.get(
-            "processing_status", default="audio_summary_generated"
-        )
-
-        # Start the categorization process in a separate thread
-        thread = threading.Thread(
-            target=categorize_articles_background,
-            args=(limit, processing_status, request_id),
-        )
-        thread.start()
-
-        return (
-            jsonify(
-                {"message": "Categorization process started", "request_id": request_id}
-            ),
-            202,
-        )
-    except Exception as e:
-        logger.error(f"Error in categorize_articles route: {str(e)}")
-        return jsonify({"error": str(e)}), 500
 
 @internal_bp.route("/generate_daily_top_articles", methods=["GET"])
 def generate_daily_top_articles():
@@ -535,10 +520,10 @@ def process_form_preferences(data):
         **{
             k: {"values": v.split(", ")} 
             for k, v in {
-                "Industry": data.get("industries"),
-                "Geography": data.get("geographies"), 
-                "Topics": data.get("news_topics"),
-                "Companies": data.get("brands_retailers")
+                "industries": data.get("industries"),
+                "geographies": data.get("geographies"), 
+                "topics": data.get("news_topics"),
+                "companies": data.get("brands_retailers")
             }.items()
             if v and v.strip()
         }

@@ -1,6 +1,5 @@
 import os
 
-
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'local')  # Default to 'LOCAL' if not set
 STAGE = os.getenv('STAGE', 'local')
 
