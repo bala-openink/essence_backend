@@ -183,6 +183,7 @@ def get_or_create_article(article_id, item, source_name, category):
         # Create new article
         new_article = {
             'id': article_id,
+            'public_key': string_util.generate_short_key(article_id),
             'title': item.get('title'),
             'url': item.get('url'),
             'domain': string_util.extract_domain(item.get('url')) if item.get('url') else None,

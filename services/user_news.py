@@ -123,25 +123,9 @@ def get_latest_news(
         f"Total get_latest_news function execution time: {end_time - start_time:.3f} seconds"
     )
 
-    articles = [prepare_for_transport(article) for article in articles]
+    articles = [utilities.prepare_for_transport(article) for article in articles]
     return articles
 
-# Convenience method to remove unnecessary fields before responding to client
-def prepare_for_transport(article):
-    if not article:
-        return article
-        
-    result = dict(article)  # Convert DictRow to regular dict first
-    result["audio_summary"] = utilities.generate_audio_url_public(
-        result["audio_summary"]
-    )
-    
-    # Remove fields that are not needed for transport
-    result.pop("full_text", None)
-    result.pop("audio_summary_url", None)
-    result.pop("summary_vector", None)
-            
-    return result
 
 def _fetch_articles_with_retry(
     user_id: str,
@@ -216,4 +200,4 @@ def get_latest_news_v2(
         f"Total get_latest_news_v2 function execution time: {end_time - start_time:.3f} seconds"
     )
 
-    return [prepare_for_transport(article) for article in articles]
+    return [utilities.prepare_for_transport(article) for article in articles]

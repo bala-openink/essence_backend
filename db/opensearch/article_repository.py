@@ -10,6 +10,7 @@ from opensearchpy import helpers
 from lib.log import logger
 from ..interfaces.database import ArticleRepository
 from .repository import OpenSearchRepository
+from util import string_util
 
 class OpenSearchArticleRepository(ArticleRepository):
     """OpenSearch implementation of ArticleRepository"""
@@ -294,3 +295,26 @@ class OpenSearchArticleRepository(ArticleRepository):
         except Exception as e:
             logger.error(f"Error updating OpenSearch mapping: {str(e)}")
             return False, str(e)
+
+    def get_by_public_key(self, public_key: str) -> Optional[Dict]:
+        """
+        Get article by its public key
+        Args:
+            public_key: The 8-digit public key to look up
+        Returns:
+            Optional[Dict]: The article if found, None otherwise
+        """
+        query = {
+            "query": {
+                "term": {
+                    "public_key": public_key
+                }
+            }
+        }
+        try:
+            response = self._client.search(index=self._index, body=query)
+            hits = response['hits']['hits']
+            return hits[0]['_source'] if hits else None
+        except Exception as e:
+            logger.error(f"Error getting article by short key: {str(e)}")
+            return None

@@ -15,6 +15,20 @@ from routes.decorators import custom_jwt_required
 
 public_bp = Blueprint('public', __name__)
 user_repository = db_factory.get_user_repository()
+article_repository = db_factory.get_article_repository()
+
+# Unauthenticated routes
+@public_bp.route('/article/<public_key>', methods=['GET'])
+def get_article(public_key):
+    logger.info(f"get_article route: {public_key}")
+    if not public_key:
+        return jsonify({"message": "Article ID is required"}), 400
+    public_key = public_key.strip().lower()
+    article = article_repository.get_by_public_key(public_key)
+    if not article:
+        return jsonify({"message": "Article not found"}), 404
+    article = utilities.prepare_for_transport(article)
+    return jsonify(article), 200
 
 @public_bp.route('/latest_news', methods=['GET'])
 @custom_jwt_required()

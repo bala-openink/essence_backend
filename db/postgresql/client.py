@@ -82,6 +82,8 @@ class PostgreSQLClient(DatabaseClient):
                 score FLOAT,
                 sent_to_user BOOLEAN DEFAULT FALSE,
                 date_created TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                importance_score FLOAT,
+                public_key VARCHAR(16),
                 UNIQUE(user_id, article_id)
             );
             

@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 from lib.log import logger
 import numpy as np
+import hashlib
 
 def generate_request_id():
     return ''.join(np.random.choice(list('0123456789ABCDEF'), size=6))
@@ -38,3 +39,13 @@ def text_to_dict(text):
         except Exception as e:
             logger.warning(f"Could not convert text to dict: {str(e)}")
         return None
+
+def generate_short_key(article_id: str) -> str:
+    """
+    Generate a unique 8-digit key from an article ID using MD5 hash.
+    Args:
+        article_id: The full article ID to hash
+    Returns:
+        str: An 8-character hexadecimal string
+    """
+    return hashlib.md5(article_id.encode()).hexdigest()[:8]

@@ -385,10 +385,15 @@ def process_events(events):
 # Convenience method to remove unnecessary fields before responding to client
 def prepare_for_transport(article):
     if article:
-        article["audio_summary"] = generate_audio_url_public(
-            article["audio_summary"]
+        article = dict(article)  # Convert DictRow to regular dict first
+        if article.get("audio_summary"):
+            article["audio_summary"] = generate_audio_url_public(
+                article["audio_summary"]
         )
-        article["full_text"] = None
-        article["audio_summary_url"] = None
-        article["summary_vector"] = None
+        if article.get("full_text"):
+            article["full_text"] = None
+        if article.get("audio_summary_url"):
+            article["audio_summary_url"] = None
+        if article.get("summary_vector"):
+            article["summary_vector"] = None
     return article

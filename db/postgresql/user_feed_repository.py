@@ -41,15 +41,16 @@ class PostgreSQLUserFeedRepository(UserFeedRepository):
                     feed.get('type'),
                     feed.get('is_from_preferred_source'),
                     feed.get('score'),
-                    feed.get('importance_score')
+                    feed.get('importance_score'),
+                    feed.get('public_key')
                 ))
 
             self._cursor.executemany("""
                 INSERT INTO user_feed (
                     user_id, article_id, title, url, domain, image, 
                     date_published, summary_50, summary_200, audio_summary,
-                    categories, source_name, type, is_from_preferred_source, score, importance_score
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    categories, source_name, type, is_from_preferred_source, score, importance_score, public_key
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id, article_id) 
                 DO UPDATE SET
                     title = EXCLUDED.title,
@@ -65,7 +66,8 @@ class PostgreSQLUserFeedRepository(UserFeedRepository):
                     type = EXCLUDED.type,
                     is_from_preferred_source = EXCLUDED.is_from_preferred_source,
                     score = EXCLUDED.score,
-                    importance_score = EXCLUDED.importance_score
+                    importance_score = EXCLUDED.importance_score,
+                    public_key = EXCLUDED.public_key
             """, values)
             self._conn.commit()
             
@@ -109,7 +111,7 @@ class PostgreSQLUserFeedRepository(UserFeedRepository):
         # TODO: Add min score and min importance score filter to remove low relevance and low importance articles
         try:
             query = """
-                SELECT user_id, article_id, title, url, domain, image,
+                SELECT user_id, article_id, public_key, title, url, domain, image,
                        date_published, summary_50, summary_200, audio_summary,
                        categories, source_name, type, is_from_preferred_source, score, importance_score, date_created
                 FROM user_feed

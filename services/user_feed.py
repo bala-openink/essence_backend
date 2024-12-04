@@ -16,6 +16,7 @@ def _create_feed_entry(user, article, is_from_preferred_source):
     return {
         'user_id': user.id,
         'article_id': article.get('id'),
+        'public_key': article.get('public_key'),
         'title': article.get('title'),
         'url': article.get('url'),
         'domain': article.get('domain'),
