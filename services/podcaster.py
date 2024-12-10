@@ -3,7 +3,8 @@ from io import BytesIO
 from typing import Dict
 import random
 import re
-
+import os
+import time
 from werkzeug.exceptions import BadRequest
 
 from pydub import AudioSegment
@@ -12,9 +13,10 @@ from services import utilities
 from models.audio_story_request import AudioStoryRequest
 from lib.log import logger
 from db.factory import db_factory
-from util import audio_util, llm_util, email_util
+from util import audio_util, llm_util, email_util, s3_util
 import config
 import constants
+from lib.video_generator import VideoGenerator
 
 # Dictionary containing the transition messages
 category_transitions = {
@@ -531,3 +533,51 @@ def generate_intro_audio_files(user_name, user_id):
 
     except Exception as e:
         logger.error(f"Error generating intro audio files: {str(e)}", exc_info=True)
+
+def create_video_in_background(conversation, articles, language: str, request_id: str = "DEFAULT", email: str = None):
+    """Creates video in background, uploads to S3, and emails the URL to user"""
+    start_time = time.time()
+    logger.info(f"Creating video in background - Request ID: {request_id}")
+    if conversation is None:
+        raise BadRequest("Conversation is not provided. Cannot continue")
+
+    s3_public_url = None
+    # Check if result is in cache
+    if request_id in cache:
+        s3_public_url = cache[request_id]
+    else:
+        try:
+            # Initialize VideoGenerator
+            video_generator = VideoGenerator()
+            
+            # Generate video file
+            video_path = video_generator.generate_video(
+                conversation=conversation,
+                articles=articles,
+                language=language
+            )
+
+            if video_path:
+                # Upload to S3
+                with open(video_path, 'rb') as video_file:
+                    key = f"videos/{request_id}.mp4"
+                    s3_url = s3_util.upload_video_to_s3(key, video_file)
+                    s3_public_url = utilities.generate_audio_url_public(s3_url)
+                    if s3_public_url:
+                        cache[request_id] = s3_public_url
+
+                # Clean up local video file
+                os.remove(video_path)
+
+        except Exception as e:
+            logger.error(f"Error generating video: {str(e)}", exc_info=True)
+            raise
+    
+    if email and s3_public_url:
+        subject = f"Your ESSENCE video for request {request_id} is ready"
+        body = f"Hello,\n\nYour ESSENCE video for request {request_id} is ready. \n\nWatch it here: {s3_public_url}\n\nBest regards,\nThe ESSENCE Team"
+        email_util.send_email(email, subject, body)
+
+    end_time = time.time()
+    logger.info(f"Video creation time: {end_time - start_time} seconds")
+    return s3_public_url

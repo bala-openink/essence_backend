@@ -28,6 +28,7 @@ flask-jwt-extended = "^4.6.0"
 psycopg2-binary = "^2.9.10"
 fuzzywuzzy = "^0.18.0"
 python-levenshtein = "^0.26.1"
+moviepy = "^2.1.1"
 
 
 [build-system]

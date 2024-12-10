@@ -139,7 +139,7 @@ def generate_custom_podcast():
         Create a natural, engaging podcast conversation between the hosts, {hosts} using all the relevant articles provided. 
 
         Key requirements:
-        Target duration: {duration_minutes} minutes (approximately {duration_minutes * 120} words)
+        Target duration: {duration_minutes} minutes (approximately {duration_minutes * 150} words)
         The conversation should be in {language} and reflect the cultural and linguistic style of the {region} region.
         {narrative_prompt}
         Return the output as an array of dialogue turns in JSON format like: [{{"speaker": "male", "text": "..."}}, {{"speaker": "female", "text": "..."}}]
@@ -154,7 +154,17 @@ def generate_custom_podcast():
         conversation = llm_util.extract_json_from_llm_response(conversation_raw)
         logger.info(f"Conversation: {conversation}")
 
-        utilities.background_task('services.podcaster.create_audio_in_background', conversation, language, add_background=False, request_id=request_id, email=email)
+        # Create light version of articles for video generation
+        light_articles = [
+            {
+                'title': article.get('title', ''),
+                'image': article.get('image', ''),
+                'summary_50': article.get('summary_50', '')
+            }
+            for article in articles
+        ]
+        utilities.background_task('services.podcaster.create_video_in_background', conversation, light_articles, language, request_id=request_id, email=email)
+        # utilities.background_task('services.podcaster.create_audio_in_background', conversation, language, add_background=False, request_id=request_id, email=email)
         return jsonify({"message": "Audio processing started in background", "request_id": request_id, "conversation": conversation}), 202
 
     except Exception as e:
@@ -881,4 +891,44 @@ def create_audio():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error(f"Error in create_audio_segments route: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@internal_bp.route("/generate_image", methods=["POST"])
+def generate_image():
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
+    logger.info(f"generate_image route - Request ID: {request_id}")
+    try:
+        data = request.json
+        if not data or 'text' not in data:
+            raise BadRequest("Text description is required")
+
+        # Extract parameters
+        text = data['text']
+        size = data.get('size', '1024x1024')
+        style = data.get('style', 'natural')
+        quality = data.get('quality', 'standard')
+
+        # Generate image
+        result = llm_util.generate_image_from_text(
+            text=text,
+            size=size,
+            style=style,
+            quality=quality
+        )
+
+        if not result:
+            return jsonify({"error": "Failed to generate image"}), 500
+
+        logger.info(f"Image generated successfully in {time.time() - start_time} seconds")
+        return jsonify({
+            "message": "Image generated successfully",
+            "image_url": result['url'],
+            "revised_prompt": result['revised_prompt'],
+        }), 200
+
+    except BadRequest as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error in generate_image route: {str(e)}")
         return jsonify({"error": str(e)}), 500

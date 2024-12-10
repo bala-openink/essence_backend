@@ -301,3 +301,52 @@ def estimate_tokens(text):
     extra_tokens = text.count('\n') + text.count('.') + text.count(',') + text.count('!') + text.count('?')
     return int(base_estimate + extra_tokens)
 
+def generate_image_from_text(text, region="UK", size="1024x1024", style="natural", quality="standard"):
+    """
+    Generate an image from text using DALL-E 3.
+    
+    Args:
+        text (str): The text description to generate an image from
+        size (str): Size of the image ("1024x1024", "1792x1024", or "1024x1792")
+        style (str): "natural" or "vivid"
+        quality (str): "standard" or "hd"
+    
+    Returns:
+        dict: Contains 'url' of the generated image and 'revised_prompt' that DALL-E used
+        None: If generation fails
+    """
+    logger.info(f"generate_image_from_text :: Generating image for text: {text}")
+    try:
+        # Create a more specific prompt for news-style images
+        enhanced_prompt = f"""
+        Create a professional image for a piece of news:
+        Style: Photojournalistic, clear lighting, high quality, suitable for business news.
+        This is set in the region of {region}.
+        Avoid people or human figures.
+        The image should be realistic and credible. 
+        No signs, markings, words, watermarks or text should be present in the image.
+        Here is the news snippet: {text}
+        """
+        
+        response = openai_service.client.images.generate(
+            model="dall-e-3",
+            prompt=enhanced_prompt,
+            size=size,
+            quality=quality,
+            style=style,
+            n=1
+        )
+
+        if response and response.data:
+            logger.info(f"Generated image url :: {response.data[0].url}")
+            return {
+                'url': response.data[0].url,
+                'revised_prompt': response.data[0].revised_prompt
+            }
+        
+        return None
+
+    except Exception as e:
+        logger.error(f"Error during DALL-E image generation: {e}")
+        return None
+

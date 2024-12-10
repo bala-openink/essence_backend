@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.exceptions import BadRequest
 from lib.log import logger
 from io import BytesIO
+import uuid
 
 from services import user_news, utilities, podcaster
 from util import audio_util, llm_util
@@ -30,6 +31,66 @@ def get_article(public_key):
     article = utilities.prepare_for_transport(article)
     return jsonify(article), 200
 
+@public_bp.route('/articles', methods=['GET'])
+def articles():
+    request_id = str(uuid.uuid4())
+    logger.info(f"test_articles route - Request ID: {request_id}")
+    try:
+        # Get optional parameters
+        date = request.args.get('date', default=None)
+        limit = request.args.get('limit', default=20, type=int)
+        processing_status = request.args.get('processing_status', default='audio_summary_generated')
+
+        # Set start_date and end_date if date parameter is provided
+        start_date = None
+        end_date = None
+        if date:
+            # Set start_date to beginning of day (00:00:00)
+            start_date = f"{date}T00:00:00"
+            # Set end_date to end of day (23:59:59)
+            end_date = f"{date}T23:59:59"
+
+        # Query articles from OpenSearch with date range
+        items = article_repository.query_by_status(
+            processing_status, 
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+
+        results = []
+        for item in items:
+            result = {
+                'id': item.get('id'),
+                'title': item.get('title'),
+                'summary_50': item.get('summary_50'),
+                'summary_200': item.get('summary_200'),
+                'source_name': item.get('source_name'),
+                'image':item.get('image'),
+                'url': item.get('url'),
+                'categories': item.get('categories'),
+                'processing_status': item.get('processing_status'),
+                'date_published': item.get('date_published')
+            }
+            results.append(result)
+
+        list_size = len(results)
+        logger.info(f"Fetched {list_size} articles from OpenSearch - Request ID: {request_id}")
+        
+        # Include the list size in the response
+        response = {
+            'count': list_size,
+            'articles': [utilities.prepare_for_transport(article) for article in results]
+        }
+        
+        return jsonify(response), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching articles: {str(e)} - Request ID: {request_id}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+# Authenticated routes
 @public_bp.route('/latest_news', methods=['GET'])
 @custom_jwt_required()
 def latest_news():

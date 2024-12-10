@@ -20,8 +20,8 @@ class DatabaseFactory:
         self.environment = config.ENVIRONMENT
         self.search_stage = config.STAGE
         self.search_environment = config.ENVIRONMENT
-        # self.search_stage = "live"
-        # self.search_environment = "production"
+        self.search_stage = "live"
+        self.search_environment = "production"
         self._dynamo_client = None
         self._opensearch_client = None
         self._postgres_client = None
