@@ -132,9 +132,12 @@ class OpenSearchArticleRepository(ArticleRepository):
         vector: List[float],
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
+        industry: Optional[str] = None,
+        region: Optional[str] = None,
+        function: Optional[str] = None
     ) -> List[Dict]:
-        """Query articles using vector similarity"""
+        """Query articles using vector similarity with optional dimension filters"""
         initial_time = time.time()
 
         query = {
@@ -149,6 +152,7 @@ class OpenSearchArticleRepository(ArticleRepository):
             "sort": [{"date_published": "desc"}]
         }
 
+        # Add date range filter if provided
         if start_date or end_date:
             date_range = {"range": {"date_published": {}}}
             if start_date:
@@ -156,6 +160,14 @@ class OpenSearchArticleRepository(ArticleRepository):
             if end_date:
                 date_range["range"]["date_published"]["lte"] = end_date
             query["query"]["bool"]["filter"].append(date_range)
+
+        # Add dimension filters if provided
+        if industry:
+            query["query"]["bool"]["filter"].append({"term": {"industry": industry}})
+        if region:
+            query["query"]["bool"]["filter"].append({"term": {"region": region}})
+        if function:
+            query["query"]["bool"]["filter"].append({"term": {"function": function}})
 
         if vector and len(vector) > 0:
             query["query"] = {

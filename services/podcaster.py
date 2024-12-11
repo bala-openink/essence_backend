@@ -352,9 +352,9 @@ def merge_audio_segments(audio_segments):
 
 
 def add_bg(audio: AudioSegment):
-    background_music = AudioSegment.from_file("resources/music/bg2.mp3")
+    background_music = AudioSegment.from_file("resources/music/bg5.mp3")
     # Set volume levels (in dB)
-    conversation_background_volume = -25  # Reduced volume during conversation
+    conversation_background_volume = -28  # Reduced volume during conversation
 
     # Adjust the volume of the background music for different segments
     background_conversation = background_music + conversation_background_volume
@@ -534,7 +534,7 @@ def generate_intro_audio_files(user_name, user_id):
     except Exception as e:
         logger.error(f"Error generating intro audio files: {str(e)}", exc_info=True)
 
-def create_video_in_background(conversation, articles, language: str, request_id: str = "DEFAULT", email: str = None):
+def create_video_in_background(conversation, articles, language: str, region:str = "UK", request_id: str = "DEFAULT", email: str = None):
     """Creates video in background, uploads to S3, and emails the URL to user"""
     start_time = time.time()
     logger.info(f"Creating video in background - Request ID: {request_id}")
@@ -554,7 +554,8 @@ def create_video_in_background(conversation, articles, language: str, request_id
             video_path = video_generator.generate_video(
                 conversation=conversation,
                 articles=articles,
-                language=language
+                language=language,
+                region=region
             )
 
             if video_path:

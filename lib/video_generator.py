@@ -54,7 +54,8 @@ class VideoGenerator:
         articles: List[Dict],
         background_music_path: Optional[str] = None,
         output_path: Optional[str] = None,
-        language: str = "en"
+        language: str = "en",
+        region: str = "UK"
     ) -> str:
         """
         Main method to generate video from conversation and articles
@@ -72,7 +73,7 @@ class VideoGenerator:
 
             # Prepare images for each conversation segment
             conversation_with_images = self._find_images_for_conversation(conversation, articles)
-            image_paths = self._prepare_images(conversation_with_images)
+            image_paths = self._prepare_images(conversation_with_images, region)
             subtitles = self._prepare_subtitles(conversation_with_images)
             video_sequence = self._create_image_sequence(image_paths, subtitles)
 
@@ -115,9 +116,9 @@ class VideoGenerator:
                 fps=self.settings['fps'],
                 codec='libx264',
                 audio_codec='aac',
-                preset='faster',  # Faster encoding
+                preset='veryfast',  # Faster encoding
                 threads=4,        # Utilize multiple CPU cores
-                bitrate='2000k'   # Lower bitrate for faster processing
+                bitrate='1500k'   # Lower bitrate for faster processing
             )
 
             return output_path
@@ -128,7 +129,7 @@ class VideoGenerator:
         finally:
             self._cleanup_temp_files()
 
-    def _prepare_images(self, conversation: List[Dict]) -> List[str]:
+    def _prepare_images(self, conversation: List[Dict], region: str) -> List[str]:
         """Prepare and validate images for each conversation segment"""
         logger.info("Preparing images for video")
         image_paths = []
@@ -141,7 +142,7 @@ class VideoGenerator:
             try:
                 if idx == 0 or idx == len(conversation) - 1:
                     # Use podcast image for the first segment
-                    image_path = "resources/images/podcast.jpg"
+                    image_path = "resources/images/podcastNew.png"
                     if os.path.exists(image_path):
                         # Verify the image can be opened
                         ImageClip(image_path)
@@ -161,7 +162,7 @@ class VideoGenerator:
                 if not image_saved:
                     # Generate image using DALL-E based on conversation text
                     prompt = f"Visual representation for: {segment['text']}"
-                    result = llm_util.generate_image_from_text(prompt)
+                    result = llm_util.generate_image_from_text(prompt, region=region)
                     logger.debug(f"Generated image for conversation segment {idx}: {result}")
                     if result and 'url' in result:
                         image_saved = file_util.save_image(result['url'], image_path)
@@ -280,7 +281,7 @@ class VideoGenerator:
         return CompositeVideoClip(subtitle_clips)
 
     def _apply_ken_burns_effect(self, image_clip: ImageClip) -> VideoClip:
-        """Apply Ken Burns effect to static image"""
+        """Apply Ken Burns effect to static image with random movement patterns"""
         w, h = image_clip.size
         video_w, video_h = self.settings['width'], self.settings['height']
 
@@ -288,10 +289,22 @@ class VideoGenerator:
         scale_factor = max(video_w / w, video_h / h)
         scaled_w, scaled_h = int(w * scale_factor), int(h * scale_factor)
 
-        # Define start and end sizes for zoom out effect
-        start_scale, end_scale = 1.2, 1.0
+        # Randomly choose effect parameters
+        import random
+        effect_type = random.choice(['zoom_in', 'zoom_out', 'pan_zoom'])
+        
+        # Define scale ranges based on effect type
+        if effect_type == 'zoom_in':
+            start_scale, end_scale = 1.0, 1.2
+        elif effect_type == 'zoom_out':
+            start_scale, end_scale = 1.2, 1.0
+        else:  # pan_zoom
+            start_scale, end_scale = 1.1, 1.1
 
-        # Create animation
+        # Random pan directions (-1 to 1)
+        pan_x = random.uniform(-0.1, 0.1)
+        pan_y = random.uniform(-0.1, 0.1)
+
         def make_frame(t):
             progress = t / image_clip.duration
             scale = start_scale + (end_scale - start_scale) * progress
@@ -300,14 +313,21 @@ class VideoGenerator:
             current_w = int(scaled_w * scale)
             current_h = int(scaled_h * scale)
 
-            # Calculate position to keep image centered
-            x = (video_w - current_w) / 2
-            y = (video_h - current_h) / 2
+            # Calculate position with panning
+            if effect_type == 'pan_zoom':
+                x = (video_w - current_w) / 2 + (pan_x * video_w * progress)
+                y = (video_h - current_h) / 2 + (pan_y * video_h * progress)
+            else:
+                x = (video_w - current_w) / 2
+                y = (video_h - current_h) / 2
 
-            # Resize and position the frame
+            # Ensure image stays within frame bounds
+            x = max(min(x, 0), video_w - current_w)
+            y = max(min(y, 0), video_h - current_h)
+
             return image_clip.resized((current_w, current_h)).with_position((x, y)).get_frame(t)
 
-        logger.debug(f"Creating ken burns effect for image duration: {image_clip.duration}")
+        logger.debug(f"Creating ken burns effect: {effect_type} for duration: {image_clip.duration}")
         return VideoClip(make_frame, duration=image_clip.duration)
 
     def _estimate_speech_duration(self, text: str) -> float:

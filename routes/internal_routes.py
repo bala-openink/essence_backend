@@ -8,6 +8,7 @@ import threading
 import time
 import os
 from functools import wraps
+from flask import Response
 
 import config
 from services import podcaster
@@ -23,6 +24,7 @@ from db.factory import db_factory
 from services import user_feed
 from util import string_util, llm_util, date_util, vector_util
 import constants
+from util import article_util
 
 internal_bp = Blueprint("internal", __name__)
 
@@ -43,6 +45,89 @@ article_repo = db_factory.get_article_repository()
 feed_repo = db_factory.get_generic_repository("feed")
 user_feed_repo = db_factory.get_user_feed_repository()
 
+def _perform_vector_search(search_query: str, request_id: str = None, start_date: str = None, end_date: str = None, industry: str = None, region: str = None, function: str = None, limit: int = 20) -> list:
+    """
+    Perform vector search for articles based on search query and date range.
+    
+    Args:
+        search_query (str): Query to search for
+        start_date (str, optional): Start date in any ISO format
+        end_date (str, optional): End date in any ISO format
+        request_id (str, optional): Request ID for logging
+        
+    Returns:
+        list: List of matching articles
+        
+    Raises:
+        BadRequest: If no articles are found
+    """
+    # Set default date range if not provided
+    if not start_date:
+        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not end_date:
+        end_date = datetime.now().strftime("%Y-%m-%d")
+
+    # Convert dates to ISO format
+    start_date = date_util.parse_iso_date(start_date).isoformat()
+    end_date = date_util.parse_iso_date(end_date).isoformat()
+
+    # Generate embedding for search query
+    logger.info(f"Generating embedding for search query: '{search_query}' - Request ID: {request_id}")
+    query_vector = vector_util.get_embedding_for_text(search_query)
+
+    # Perform vector search
+    articles = article_repo.query_by_vector(query_vector.tolist(), start_date, end_date, limit=limit, industry=industry, region=region, function=function)
+    
+    _, articles = vector_util.deduplicate_articles(articles)
+
+    if not articles:
+        logger.warning(f"No articles found for query: '{search_query}' - Request ID: {request_id}")
+        raise BadRequest("No relevant articles found")
+        
+    logger.info(f"Found {len(articles)} relevant articles - Request ID: {request_id}")
+    return articles
+
+@internal_bp.route("/search_for_podcast", methods=["POST"])
+def search_for_podcast():
+    request_id = string_util.generate_request_id()
+    logger.info(f"search_for_podcast route - Request ID: {request_id}")
+    try:
+        data = request.json
+        if data is None:
+            raise BadRequest("No data received")
+
+        # Validate required inputs
+        if not all(key in data for key in ["search_query", "duration_minutes"]):
+            logger.error(f"Missing required fields - Request ID: {request_id}")
+            return jsonify({"error": "Missing required fields: search_query and duration_minutes"}), 400
+
+        # Perform vector search
+        articles = _perform_vector_search(
+            request_id=request_id,
+            search_query=data["search_query"],
+            start_date=data.get("start_date"),
+            end_date=data.get("end_date"),
+            industry=data.get("industry"),
+            region=data.get("region"),
+            function=data.get("function"),
+            limit=data.get("limit", 20)
+        )
+
+        # Convert articles to CSV
+        csv_content, filename = article_util.articles_to_csv(articles, request_id)
+        
+        return Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename={filename}'
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in search_for_podcast route - Request ID: {request_id}: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @internal_bp.route("/generate_custom_podcast", methods=["POST"])
 def generate_custom_podcast():
     request_id = string_util.generate_request_id()
@@ -58,76 +143,56 @@ def generate_custom_podcast():
         # Validate required inputs
         if not all(key in data for key in ["search_query", "duration_minutes"]):
             logger.error(f"Missing required fields - Request ID: {request_id}")
-            return (
-                jsonify(
-                    {
-                        "error": "Missing required fields: search_query and duration_minutes"
-                    }
-                ),
-                400,
-            )
+            return jsonify({"error": "Missing required fields: search_query and duration_minutes"}), 400
 
         search_query = data["search_query"]
         narrative_prompt = data.get("narrative_prompt", search_query)
         hosts = data.get("hosts", "Harry and Emily")
         email = data.get("email", config.ADMIN_EMAIL)
+        limit = data.get("limit", 20)
         duration_minutes = int(data["duration_minutes"])
-        start_date = data.get(
-            "start_date", 
-            (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        )
-        end_date = data.get(
-            "end_date", 
-            datetime.now().strftime("%Y-%m-%d")
-        )
-
-        # Convert to ISO format using parse_iso_date
-        if start_date:
-            start_date = date_util.parse_iso_date(start_date).isoformat()
-        if end_date:
-            end_date = date_util.parse_iso_date(end_date).isoformat()
-
         language = data.get("language", "en")
         region = data.get("region", "US")
 
-        logger.info(
-            f"Generating embedding for search query: '{search_query}' - Request ID: {request_id}"
+        # Perform vector search using the utility method
+        articles = _perform_vector_search(
+            request_id=request_id,
+            search_query=search_query,
+            start_date=data.get("start_date"),
+            end_date=data.get("end_date"),
+            industry=data.get("industry"),
+            region=data.get("region"),
+            function=data.get("function"),
+            limit=limit
         )
-        query_vector = vector_util.get_embedding_for_text(search_query)
 
-        # Debug vector properties
-        logger.debug(f"Query vector type: {type(query_vector)}")
-        logger.debug(f"Query vector shape: {query_vector.shape}")
-        logger.debug(f"Query vector sample (first 5 elements): {query_vector[:5]}")
-
-        articles = article_repo.query_by_vector(query_vector.tolist(), start_date, end_date, limit=20)
-
-        logger.info(
-            f"Found {len(articles)} relevant articles - Request ID: {request_id}"
-        )
-        if not articles:
-            logger.warning(
-                f"No articles found for query: '{search_query}' - Request ID: {request_id}"
-            )
-            return jsonify({"error": "No relevant articles found"}), 404
-
-        # Log titles of found articles
-        logger.debug(f"Retrieved articles - Request ID: {request_id}:")
-        for idx, article in enumerate(articles, 1):
-            logger.debug(
-                f"{idx}. {article.get('score', 0)} - {article.get('title', 'No title')} ({article.get('date_published', 'No date')})"
-            )
+        # Filter out excluded articles if exclude_keys parameter is present
+        exclude_keys = data.get("exclude_keys", "")
+        if exclude_keys:
+            excluded_keys = [key.strip() for key in exclude_keys.split(",")]
+            logger.info(f"Filtering out {len(excluded_keys)} articles - Request ID: {request_id}")
+            
+            original_count = len(articles)
+            filtered_articles = [
+                article for article in articles 
+                if (article.get('public_key', '') not in excluded_keys and 
+                    article.get('id', '') not in excluded_keys)
+            ]
+            
+            filtered_count = original_count - len(filtered_articles)
+            logger.info(f"Removed {filtered_count} articles based on exclude_keys - Request ID: {request_id}")
+            
+            if not filtered_articles:
+                raise BadRequest("No articles remaining after filtering excluded articles")
 
         # Prepare articles summary
-        logger.info(
-            f"Preparing comprehensive summary of {len(articles)} articles - Request ID: {request_id}"
-        )
+        logger.info(f"Preparing comprehensive summary of {len(filtered_articles)} articles - Request ID: {request_id}")
         articles_summary = "\n\n".join(
             [
                 f"Article from {article.get('date_published', 'unknown date')}:\n"
                 f"Title: {article.get('title', '')}\n"
                 f"{article.get('summary_200', '')}"
-                for article in articles
+                for article in filtered_articles
             ]
         )
 
@@ -161,10 +226,9 @@ def generate_custom_podcast():
                 'image': article.get('image', ''),
                 'summary_50': article.get('summary_50', '')
             }
-            for article in articles
+            for article in filtered_articles
         ]
-        utilities.background_task('services.podcaster.create_video_in_background', conversation, light_articles, language, request_id=request_id, email=email)
-        # utilities.background_task('services.podcaster.create_audio_in_background', conversation, language, add_background=False, request_id=request_id, email=email)
+        utilities.background_task('services.podcaster.create_video_in_background', conversation, light_articles, language, region, request_id=request_id, email=email)
         return jsonify({"message": "Audio processing started in background", "request_id": request_id, "conversation": conversation}), 202
 
     except Exception as e:
@@ -908,13 +972,15 @@ def generate_image():
         size = data.get('size', '1024x1024')
         style = data.get('style', 'natural')
         quality = data.get('quality', 'standard')
+        region = data.get('region', 'UK')
 
         # Generate image
         result = llm_util.generate_image_from_text(
             text=text,
             size=size,
             style=style,
-            quality=quality
+            quality=quality,
+            region=region
         )
 
         if not result:

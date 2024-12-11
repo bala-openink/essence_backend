@@ -320,10 +320,9 @@ def generate_image_from_text(text, region="UK", size="1024x1024", style="natural
         # Create a more specific prompt for news-style images
         enhanced_prompt = f"""
         Create a professional image for a piece of news:
-        Style: Photojournalistic, clear lighting, high quality, suitable for business news.
+        Style: Flat vector-style illustration, featuring clean lines, soft gradient backgrounds, and minimalist design. Subtle glowing effects with geometric shapes and a modern, digital aesthetic. Use calming and vibrant colors for a polished and professional look.
         This is set in the region of {region}.
         Avoid people or human figures.
-        The image should be realistic and credible. 
         No signs, markings, words, watermarks or text should be present in the image.
         Here is the news snippet: {text}
         """

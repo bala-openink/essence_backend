@@ -37,6 +37,17 @@ def _create_user_feed(user, articles):
     """Create feed entries for a single user from the given articles"""
     try:
         logger.info(f"Creating feed for user {user.id} with {len(articles)} articles")
+        # Filter out articles without audio summary or incorrect status
+        valid_articles = [
+            article for article in articles 
+            if article.get('audio_summary') and article.get('processing_status') == 'audio_summary_generated'
+        ]
+        
+        if not valid_articles:
+            logger.info(f"No valid articles with audio summaries found for user {user.id}")
+            return
+            
+        articles = valid_articles
         # Split articles into preferred and remaining
         preferred_sources = user.news_sources
         preferred_articles = [article for article in articles if article.get('domain') in preferred_sources]
@@ -85,6 +96,8 @@ def create_feeds_for_users(users, batch_id=None):
             logger.info("No articles found for feed creation")
             return
         
+        _, articles = vector_util.deduplicate_articles(articles)
+
         error_users = []
         for user in users:
             try:
